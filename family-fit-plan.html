@@ -133,6 +133,7 @@ function render(){
   }
   var curW=cw(),actW=aw(),clW=Math.min(curW,8);
   if(curW>8&&U.tab===0){r.innerHTML=rDone();return;}
+  if(!S.weeks)S.weeks={};
   var wd=S.weeks[actW]||newWk(),sc=wd.schedule,dm=wd.done;
   var isCW=(actW===clW),isPW=(actW<clW);
   var wdy=sc.filter(function(d){return d.type!=='rest'&&d.type!=='walk';}).length;
@@ -228,7 +229,7 @@ function init(){
       var p=JSON.parse(e.data),val=p.data;
       if(val===null){if(S.startDate)fbWrite(S);}
       else{
-      var inc=val||{startDate:null,weeks:{}};
+      var inc=Object.assign({startDate:null,weeks:{}},val||{});
       if(!inc.startDate&&S.startDate)inc.startDate=S.startDate;
       S=inc;render();
     }
