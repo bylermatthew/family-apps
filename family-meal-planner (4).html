@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <title>Family Meal Planner</title>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Meal Planner"/>
+  <meta name="theme-color" content="#B45309"/>
+  <link rel="apple-touch-icon" href="data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' fill='%23C96A1A' rx='40'/><rect width='180' height='180' fill='%23E07520' rx='40' opacity='0.45'/><circle cx='90' cy='92' r='46' fill='none' stroke='rgba(255,255,255,0.25)' stroke-width='3'/><circle cx='90' cy='92' r='30' fill='rgba(255,255,255,0.12)'/><rect x='31' y='52' width='3.5' height='22' rx='1.75' fill='white'/><rect x='41' y='52' width='3.5' height='22' rx='1.75' fill='white'/><rect x='31' y='74' width='14' height='3.5' rx='1.75' fill='white'/><rect x='36.25' y='74' width='5.5' height='54' rx='2.75' fill='white'/><rect x='142.5' y='74' width='5.5' height='54' rx='2.75' fill='white'/><path d='M142.5 52 Q154 62 148 74 L142.5 74 Z' fill='white'/></svg>"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    body{background:#FFFBF5;font-family:Georgia,serif;overscroll-behavior:none}
+    :root{--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px)}
+    .sx{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+    .sx::-webkit-scrollbar{display:none}
+    .sy{overflow-y:auto;-webkit-overflow-scrolling:touch}
+    input,button,select{-webkit-appearance:none;font-family:inherit}
+    @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+    .slide-up{animation:slideUp .24s ease}
+    #a2hs{position:fixed;bottom:0;left:0;right:0;background:#B45309;color:#fff;padding:14px 20px 32px;font-family:sans-serif;font-size:14px;display:flex;align-items:center;gap:12px;z-index:9999;box-shadow:0 -4px 24px rgba(0,0,0,.25)}
+    #a2hs button{background:#fff;color:#B45309;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<div id="a2hs" style="display:none">
+  <div style="font-size:28px;flex-shrink:0">📲</div>
+  <div style="flex:1;line-height:1.5;font-family:sans-serif"><strong style="display:block;font-size:15px">Save as an App!</strong>Tap <strong>Share ↑</strong> then <strong>"Add to Home Screen"</strong></div>
+  <button onclick="document.getElementById('a2hs').style.display='none'">Got it</button>
+</div>
+<script>
+window.onerror=function(msg,src,line){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:sans-serif"><strong>JS Error line '+line+':</strong><br>'+msg+'</div>';return false;};
+if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.navigator.standalone)
+  document.getElementById('a2hs').style.display='flex';
+</script>
+<script>
+try{
+var SK='mealPlan_v3';
+var FB='https://family-fit-79ca0-default-rtdb.firebaseio.com';
+var METHODS={
+  grill:{label:"Grill",emoji:"🔥",bg:"#FEF3C7",color:"#92400E"},
+  blackstone:{label:"Blackstone",emoji:"⬛",bg:"#F3F4F6",color:"#374151"},
+  oven:{label:"Oven",emoji:"♨️",bg:"#EDE9FE",color:"#5B21B6"},
+  stovetop:{label:"Stovetop",emoji:"🍳",bg:"#DCFCE7",color:"#166534"},
+  slowcooker:{label:"Slow Cooker",emoji:"🥘",bg:"#FEE2E2",color:"#991B1B"},
+};
+
+var SECTS=[
+  {id:"meat",label:"🥩 Meat & Fish",bg:"#FEE2E2"},
+  {id:"produce",label:"🥦 Fresh Produce",bg:"#DCFCE7"},
+  {id:"dairy",label:"🥛 Dairy & Eggs",bg:"#DBEAFE"},
+  {id:"pantry",label:"🥫 Pantry & Spices",bg:"#FEF3C7"},
+  {id:"bread",label:"🍞 Bread & Tortillas",bg:"#EDE9FE"},
+  {id:"frozen",label:"❄️ Frozen",bg:"#E0F2FE"},
+];
+
+var RECIPES=[
+  {id:"hamburger-helper",emoji:"🍝",name:"One Pot Hamburger Helper",method:"stovetop",time:30,cost:"$12–15",cals:510,
+   desc:"Homemade hamburger helper — ground beef and elbow noodles simmered in seasoned beef broth, finished with cream and cheddar.",
+   kidsNote:"Kids love this — pasta is soft enough for the 1yo. Serve their portion before stirring in all the seasoning if preferred.",
+   groceryItems:[
+     {name:"Ground beef, 1 lb",section:"meat"},{name:"Yellow onion, 1 (finely chopped)",section:"produce"},
+     {name:"Tomato paste, 2 tbsp",section:"pantry"},{name:"Worcestershire sauce, 1 tsp",section:"pantry"},
+     {name:"Beef broth, 2¼ cups",section:"pantry"},{name:"Elbow noodles, 2 cups uncooked",section:"pantry"},
+     {name:"Shredded cheddar cheese, 2 cups",section:"dairy"},{name:"Heavy whipping cream, ⅓ cup",section:"dairy"},
+     {name:"Sour cream, ¼ cup",section:"dairy"},{name:"Onion powder, garlic powder, salt, pepper",section:"pantry"},
+   ],
+   steps:[
+     "In a large skillet with a lid, cook ground beef, onion, salt, onion powder, garlic powder, and pepper over medium-high heat until no longer pink. Drain.",
+     "Add tomato paste and Worcestershire sauce; stir until combined.",
+     "Add beef broth and uncooked elbow noodles. Stir and bring to a boil.",
+     "Once boiling, cover with the lid and reduce heat to medium-low. Cook 15 min until liquid is absorbed and pasta is done.",
+     "Stir in shredded cheese, heavy cream, and sour cream until combined. Serve immediately.",
+   ]},
+
+  {id:"bbq-chicken-sliders",emoji:"🍗",name:"BBQ Chicken Sliders + Side Salad",method:"stovetop",time:20,cost:"$12–16",cals:420,
+   desc:"Shredded rotisserie chicken tossed in BBQ sauce, piled onto slider buns. 15–20 minutes and dinner is done.",
+   kidsNote:"Mini sliders are great for the 3yo. Pull chicken into very small pieces for the 1yo and serve on a soft bun torn up.",
+   groceryItems:[
+     {name:"Cooked shredded chicken, 3 cups (rotisserie works great)",section:"meat"},
+     {name:"BBQ sauce, ½–¾ cup",section:"pantry"},{name:"Slider buns, 1 pack",section:"bread"},
+     {name:"Coleslaw kit or bagged salad (optional)",section:"produce"},{name:"Sliced cheese (optional)",section:"dairy"},
+   ],
+   steps:[
+     "Shred cooked chicken, removing skin and bones if using rotisserie.",
+     "Warm a skillet over medium heat. Add chicken and stir 1 minute.",
+     "Pour in BBQ sauce and stir until evenly coated.",
+     "Heat 4–6 minutes, stirring occasionally, until hot.",
+     "Spoon onto slider buns. Add cheese and coleslaw if desired. Serve with salad.",
+   ]},
+
+  {id:"venison-sloppy-joes",emoji:"🫙",name:"Venison Sloppy Joes",method:"stovetop",time:20,cost:"$8–12",cals:380,venison:true,
+   desc:"Ground venison in a sweet-savory sloppy joe sauce, piled onto buns. A 20-minute weeknight win.",
+   kidsNote:"Great for kids! Set aside a small plain portion before seasoning. Serve on a soft bun torn into pieces for the 1yo.",
+   groceryItems:[
+     {name:"Ground venison, 1 lb",section:"meat"},{name:"Yellow onion, ½ (diced, optional)",section:"produce"},
+     {name:"Sloppy joe sauce, 1 cup (store-bought) OR ketchup ½ cup + mustard 1 tbsp + brown sugar 1 tbsp + Worcestershire 1 tsp",section:"pantry"},
+     {name:"Hamburger buns, 4",section:"bread"},{name:"Sliced cheese and pickles (optional)",section:"dairy"},
+   ],
+   steps:[
+     "Heat a skillet over medium-high. Add venison and onion (if using).",
+     "Cook 6–8 min, breaking it up, until browned. Drain excess grease. Reduce heat to medium.",
+     "Stir in sloppy joe sauce (or the ketchup mixture).",
+     "Simmer 5 min, stirring occasionally, until thickened.",
+     "Spoon onto buns and serve with cheese and pickles if desired.",
+   ]},
+
+  {id:"venison-chili",emoji:"🥘",name:"Venison Chili",method:"slowcooker",timeLabel:"3–8 hrs",time:30,cost:"$8–13",cals:350,venison:true,
+   desc:"Slow cooker or stovetop venison chili with beans, diced tomatoes, and chili seasoning. Hearty and dead simple.",
+   kidsNote:"Mild enough if you skip extra spice. Serve the 1yo over plain rice. Skip beans if they're not used to them yet.",
+   groceryItems:[
+     {name:"Ground venison, 1 lb",section:"meat"},{name:"Diced tomatoes, 1 can (14–15 oz)",section:"pantry"},
+     {name:"Kidney/black/pinto beans, 1 can (drained)",section:"pantry"},{name:"Chili seasoning, 1–2 tbsp",section:"pantry"},
+     {name:"Broth or water, 1 cup",section:"pantry"},{name:"Yellow onion, ½ (optional)",section:"produce"},
+     {name:"Frozen corn, 1 cup (optional)",section:"frozen"},{name:"Bell pepper, 1 (optional)",section:"produce"},
+   ],
+   steps:[
+     "Slow Cooker: Brown venison in a skillet until no longer pink. Drain. Add venison and all remaining ingredients to slow cooker. Stir. Cook on Low 6–8 hrs or High 3–4 hrs. Taste and adjust seasoning before serving.",
+     "Stovetop: Brown venison (and onion if using) in a pot over medium heat. Drain. Add remaining ingredients, bring to simmer, and cook uncovered 20–25 min stirring occasionally until thickened.",
+   ]},
+
+  {id:"sheet-pan-chicken",emoji:"🍽️",name:"Sheet-Pan Chicken + Potatoes + Broccoli",method:"oven",time:40,cost:"$13–16",cals:490,
+   desc:"Everything on one pan. Chicken, crispy potatoes, and broccoli all roasted together. Minimal dishes.",
+   kidsNote:"One of the most kid-friendly meals on the list. Serve broccoli plain with a little butter for picky eaters.",
+   groceryItems:[
+     {name:"Chicken thighs or breasts, 1.5–2 lbs",section:"meat"},{name:"Russet or Yukon gold potatoes, 1.5 lbs (cut into ¾-inch cubes)",section:"produce"},
+     {name:"Broccoli, 1 large head (or 1 bag florets)",section:"produce"},{name:"Olive oil, 2–3 tbsp",section:"pantry"},
+     {name:"Garlic powder, 1 tsp",section:"pantry"},{name:"Paprika, 1 tsp (optional)",section:"pantry"},
+     {name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 425°F. Line a large sheet pan with parchment or foil.",
+     "Toss potatoes with 1–2 tbsp olive oil, garlic powder, salt, pepper (and paprika if using). Spread in a single layer. Roast 18 min.",
+     "While potatoes roast, pat chicken dry. Rub with 1 tbsp olive oil and season both sides. Cut broccoli into florets and toss with a drizzle of oil and pinch of salt.",
+     "Remove pan. Push potatoes to one side; add chicken and broccoli in a single layer.",
+     "Return to oven and roast 14–18 more min until chicken reaches 165°F and potatoes are fork-tender. Rest chicken 5 min. Serve.",
+   ]},
+
+  {id:"steak-bites",emoji:"🥩",name:"Garlic Butter Steak Bites & Roasted Potatoes",method:"stovetop",time:40,cost:"$18–22",cals:560,
+   desc:"Bite-sized steak seared in garlic butter, served with crispy oven-roasted baby potatoes.",
+   kidsNote:"Cut steak into tiny pieces for both kids. Plain roasted potatoes with a little butter are a toddler favorite.",
+   groceryItems:[
+     {name:"Steak (any cut), 2 lbs — cut into bite-sized cubes",section:"meat"},{name:"Baby potatoes, 2 lbs (halved)",section:"produce"},
+     {name:"Butter, 4 tbsp",section:"dairy"},{name:"Garlic, 3 cloves (minced)",section:"produce"},
+     {name:"Olive oil, 2 tbsp",section:"pantry"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 425°F. Toss potatoes with olive oil, salt, and pepper. Roast 30–35 min until golden.",
+     "Heat a large skillet over high heat. Melt butter and add garlic.",
+     "Add steak bites and sear 2–3 min per side until browned to desired doneness.",
+     "Serve steak alongside roasted potatoes.",
+   ]},
+
+  {id:"steak-potato-skillet",emoji:"🥩",name:"Steak & Potato Skillet",method:"stovetop",time:35,cost:"$16–20",cals:520,
+   desc:"One-skillet meal: diced steak, golden potatoes, onion, and bell pepper all cooked together.",
+   kidsNote:"Slice steak thin and cut small. Remove bell pepper from the 1yo's portion if it's a texture concern.",
+   groceryItems:[
+     {name:"Steak, 1½ lbs (sliced)",section:"meat"},{name:"Potatoes, 2 lbs (diced)",section:"produce"},
+     {name:"Yellow onion, 1 (sliced)",section:"produce"},{name:"Bell pepper, 1 (sliced)",section:"produce"},
+     {name:"Oil, 2 tbsp",section:"pantry"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Heat oil in a large skillet over medium-high.",
+     "Cook diced potatoes, stirring occasionally, until tender and lightly browned, about 12–15 min.",
+     "Add sliced onion and bell pepper; cook until softened, about 5 min.",
+     "Add sliced steak and cook to desired doneness.",
+     "Season with salt and pepper. Serve directly from the skillet.",
+   ]},
+
+  {id:"venison-smash-burgers",emoji:"🍔",name:"Venison Smash Burgers + Oven Fries",method:"stovetop",time:35,cost:"$8–12",cals:540,venison:true,
+   desc:"Cast-iron smash burgers made with ground venison, served with crispy homemade oven fries.",
+   kidsNote:"Make a small plain patty for the kids. Crumble for the 1yo and serve with soft bun pieces. Homemade fries are a big hit.",
+   groceryItems:[
+     {name:"Ground venison, 1 lb",section:"meat"},{name:"Hamburger buns, 4",section:"bread"},
+     {name:"Russet potatoes, 3–4 (for fries)",section:"produce"},{name:"Oil, salt & pepper",section:"pantry"},
+     {name:"Cheese slices (optional)",section:"dairy"},{name:"Lettuce, tomato, pickles (optional)",section:"produce"},
+     {name:"Ketchup, mayo, mustard (optional)",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 450°F. Cut potatoes into thin fries (~¼–⅜ inch). Toss with 2 tbsp oil, salt, and pepper. Spread in single layer on sheet pan. Bake 20–25 min, flipping halfway, until browned and crisp.",
+     "While fries bake, divide venison into 4 loose balls. Do NOT overwork or season yet.",
+     "Heat a cast-iron skillet (or heavy skillet) over high heat until very hot. Add a tiny bit of oil.",
+     "Place venison balls in skillet; immediately smash flat with a sturdy spatula. Season tops with salt and pepper. Cook 2–3 min until deeply browned and crispy.",
+     "Flip once. Add cheese if using. Cook 1–2 more min. Toast buns if desired. Build and serve with fries.",
+   ]},
+
+  {id:"steak-noodles-greenbeans",emoji:"🍝",name:"Steak + Buttered Noodles + Green Beans",method:"stovetop",time:25,cost:"$16–20",cals:580,
+   desc:"Pan-seared steak alongside buttered egg noodles and simple green beans. A 25-minute family dinner.",
+   kidsNote:"Buttered noodles are a toddler gold standard — the 1yo will eat a full bowl. Cut green beans small and steak into thin slices.",
+   groceryItems:[
+     {name:"Steak (sirloin, strip, or flank), 1.5–2 lbs",section:"meat"},{name:"Egg noodles, 12 oz",section:"pantry"},
+     {name:"Frozen green beans, 1 bag (or 1 lb fresh)",section:"frozen"},{name:"Butter, 3 tbsp",section:"dairy"},
+     {name:"Oil for searing",section:"pantry"},{name:"Garlic powder (optional)",section:"pantry"},
+     {name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Pat steak dry; season both sides with salt and pepper. Let sit 10 min at room temperature.",
+     "Boil salted water. Cook egg noodles per package. Drain and toss with 2 tbsp butter (and garlic powder if using). Cover to keep warm.",
+     "Heat skillet over medium-high. Add thin layer of oil. Sear steak 3–5 min per side (135°F medium-rare, 145°F medium). Rest 5–10 min. Slice against the grain.",
+     "Cook green beans per bag directions or sauté with 1 tbsp butter until hot. Season with salt and pepper.",
+     "Serve sliced steak alongside buttered noodles and green beans.",
+   ]},
+
+  {id:"venison-meatballs-gravy",emoji:"🥘",name:"Slow Cooker Venison Meatballs in Gravy",method:"slowcooker",timeLabel:"6–8 hrs",time:15,cost:"$8–12",cals:420,venison:true,
+   desc:"Venison meatballs slow cooked in a rich brown gravy. Dump it in the morning, serve it at dinner.",
+   kidsNote:"Perfect for kids — meatballs get very soft and the gravy is mild. Cut in half for the 1yo. Serve over mashed potatoes or noodles.",
+   groceryItems:[
+     {name:"Venison meatballs, 2 lbs",section:"meat"},{name:"Brown gravy mix, 2 packets",section:"pantry"},
+     {name:"Beef broth, 3 cups",section:"pantry"},
+     {name:"Mashed potato ingredients or egg noodles (for serving)",section:"pantry"},
+   ],
+   steps:[
+     "Add venison meatballs, brown gravy mix, and beef broth to the slow cooker.",
+     "Stir to combine.",
+     "Cook on LOW for 6–8 hours.",
+     "Serve over mashed potatoes or egg noodles.",
+   ]},
+
+  {id:"dump-bake-chicken",emoji:"🍗",name:"Dump-and-Bake Creamy Italian Chicken & Potatoes",method:"oven",time:65,cost:"$13–16",cals:490,
+   desc:"Mix everything in a baking dish, cover, and bake. Creamy, herby chicken and potatoes with zero active effort.",
+   kidsNote:"Soft and creamy — both kids will like this. Pull chicken apart into small pieces for the 1yo before serving.",
+   groceryItems:[
+     {name:"Chicken breasts, 2 lbs",section:"meat"},{name:"Potatoes, 2 lbs (cubed)",section:"produce"},
+     {name:"Cream of mushroom soup, 2 cans",section:"pantry"},{name:"Italian seasoning, 1½ tbsp",section:"pantry"},
+     {name:"Chicken broth, 1 cup",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 400°F.",
+     "Mix all ingredients in a baking dish until combined.",
+     "Cover with foil and bake 55 minutes.",
+     "Uncover last 10 minutes if desired for a slightly browned top.",
+     "Pull chicken apart and serve with the creamy potato sauce.",
+   ]},
+
+  {id:"lemon-herb-chicken",emoji:"🍗",name:"Lemon Herb Chicken Thighs with Parmesan Potatoes",method:"oven",time:45,cost:"$14–17",cals:510,
+   desc:"Chicken thighs and cubed potatoes tossed together with lemon, olive oil, Italian seasoning, and Parmesan. One pan.",
+   kidsNote:"Excellent family meal. Serve kids plain chicken thigh with the Parmesan potatoes — both kids will eat this happily.",
+   groceryItems:[
+     {name:"Chicken thighs, 2½ lbs",section:"meat"},{name:"Potatoes, 2 lbs (cubed)",section:"produce"},
+     {name:"Lemons, 2 (juiced)",section:"produce"},{name:"Olive oil, 2 tbsp",section:"pantry"},
+     {name:"Italian seasoning, 1½ tbsp",section:"pantry"},{name:"Parmesan cheese, ½ cup (grated)",section:"dairy"},
+   ],
+   steps:[
+     "Preheat oven to 400°F.",
+     "Toss all ingredients together in a large bowl until well coated.",
+     "Spread evenly on a sheet pan.",
+     "Bake 40–45 min until chicken is cooked through (165°F) and potatoes are tender.",
+   ]},
+
+  {id:"venison-shepherds-pie",emoji:"🥧",name:"Venison Shepherd's Pie",method:"oven",time:60,cost:"$10–14",cals:480,venison:true,
+   desc:"Ground venison in a savory gravy with mixed vegetables, topped with creamy mashed potatoes and baked golden.",
+   kidsNote:"A comfort food classic. Mashed potatoes on top make it especially toddler-friendly — the 1yo can eat this with a spoon.",
+   groceryItems:[
+     {name:"Ground venison, 1½ lbs",section:"meat"},{name:"Yellow onion, 1 medium (diced)",section:"produce"},
+     {name:"Garlic, 2 cloves (minced)",section:"produce"},{name:"Frozen mixed vegetables, 2 cups",section:"frozen"},
+     {name:"Flour, 2 tbsp",section:"pantry"},{name:"Beef broth, 2 cups",section:"pantry"},
+     {name:"Worcestershire sauce, 1 tbsp",section:"pantry"},{name:"Prepared mashed potatoes, 4 cups",section:"produce"},
+     {name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 375°F.",
+     "Brown venison in a large skillet over medium heat. Add onion and garlic; cook until softened.",
+     "Sprinkle flour over meat and stir for 1 minute.",
+     "Slowly stir in broth and Worcestershire. Simmer until thickened.",
+     "Stir in frozen vegetables; season with salt and pepper.",
+     "Transfer to a baking dish. Spread mashed potatoes evenly on top.",
+     "Bake uncovered 30–35 min until bubbly and lightly browned.",
+   ]},
+
+  {id:"chicken-bacon-soup",emoji:"🍲",name:"Creamy Chicken & Bacon Potato Soup",method:"slowcooker",timeLabel:"6–8 hrs",time:20,cost:"$16–20",cals:520,
+   desc:"Chicken, potatoes, and bacon in a slow cooker all day. Stir in cream and cheese at the end. Pure comfort.",
+   kidsNote:"Soft potato and shredded chicken are perfect for the 1yo. Mild, creamy flavor — both kids will go back for seconds.",
+   groceryItems:[
+     {name:"Chicken breasts, 2 lbs",section:"meat"},{name:"Bacon, 8 slices (cooked and crumbled)",section:"meat"},
+     {name:"Potatoes, 2 lbs (diced)",section:"produce"},{name:"Yellow onion, 1 medium (diced)",section:"produce"},
+     {name:"Chicken broth, 6 cups",section:"pantry"},{name:"Heavy cream, 1 cup",section:"dairy"},
+     {name:"Shredded cheese, 1½ cups",section:"dairy"},
+   ],
+   steps:[
+     "Add chicken, potatoes, onion, broth, and bacon to the slow cooker.",
+     "Cook on LOW for 6–8 hours until chicken is tender.",
+     "Remove chicken and shred with two forks. Return to cooker.",
+     "Stir in heavy cream and shredded cheese.",
+     "Heat on LOW for 10–15 more minutes until cheese is melted. Serve hot.",
+   ]},
+
+  {id:"bbq-chicken-roasted-veg",emoji:"🍗",name:"BBQ Chicken with Roasted Vegetables",method:"grill",time:45,cost:"$15–18",cals:480,
+   desc:"BBQ chicken grilled or baked alongside roasted sweet potatoes, carrots, and grilled corn on the cob.",
+   kidsNote:"Sweet potato is great for toddlers. Cut corn off the cob for the 1yo. Keep a plain chicken portion for the kids before applying heavy BBQ sauce.",
+   groceryItems:[
+     {name:"Chicken thighs or breasts, 4",section:"meat"},{name:"BBQ sauce, 1 cup",section:"pantry"},
+     {name:"Sweet potatoes, 2 large (cubed)",section:"produce"},{name:"Carrots, 3 (peeled, cut into sticks)",section:"produce"},
+     {name:"Corn, 2 ears (husked)",section:"produce"},{name:"Olive oil, 2 tbsp",section:"pantry"},
+     {name:"Smoked paprika, 1 tsp",section:"pantry"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Coat chicken with BBQ sauce. Let marinate at least 15 min. Preheat grill or oven to 375°F.",
+     "Toss sweet potatoes and carrots with olive oil, smoked paprika, salt, and pepper. Spread on a baking sheet. Roast 30–40 min, flipping halfway, until tender and golden.",
+     "Grill chicken on medium heat 6–8 min per side until internal temp reaches 165°F. (Or bake 25–30 min.)",
+     "Grill corn on medium heat, turning occasionally, about 10–12 min until lightly charred.",
+     "Serve BBQ chicken with roasted vegetables and corn.",
+   ]},
+
+  {id:"bbq-grilled-chicken-corn",emoji:"🌽",name:"BBQ Grilled Chicken with Corn on the Cob",method:"grill",time:30,cost:"$13–16",cals:440,
+   desc:"Classic grilled BBQ chicken with corn on the cob. Brush with sauce in the last few minutes for the best glaze.",
+   kidsNote:"Cut corn off the cob for the 1yo. Plain grilled chicken (before the BBQ sauce) is perfect for both kids.",
+   groceryItems:[
+     {name:"Chicken breasts or thighs, 4",section:"meat"},{name:"BBQ sauce, 1 cup",section:"pantry"},
+     {name:"Olive oil, 1 tbsp",section:"pantry"},{name:"Corn, 4 ears (husked)",section:"produce"},
+     {name:"Butter, 2 tbsp (optional)",section:"dairy"},{name:"Salt & pepper",section:"pantry"},
+     {name:"Fresh parsley or cilantro (optional)",section:"produce"},
+   ],
+   steps:[
+     "Preheat grill to medium heat (~375°F). Brush chicken with olive oil; season with salt and pepper.",
+     "Place chicken on grill. Grill 6–8 min per side until internal temp reaches 165°F.",
+     "In the last 5 min, brush chicken with BBQ sauce. Flip and cook 2–3 more min, adding more sauce as needed.",
+     "While chicken grills, cook corn directly on grates, turning occasionally, 10–12 min until slightly charred and tender. (Or boil 5–7 min.)",
+     "Brush corn with butter; sprinkle with salt and pepper. Garnish with parsley or cilantro if desired.",
+   ]},
+
+  {id:"chicken-stir-fry-asian",emoji:"🥢",name:"Chicken Stir-Fry (Asian)",method:"stovetop",time:25,cost:"$12–15",cals:420,
+   desc:"Marinated chicken stir-fried with carrots, bell pepper, and broccoli. Use Kikkoman Stir-Fry Sauce to keep it simple.",
+   kidsNote:"Kids love stir-fry over rice. Use Kikkoman sauce sparingly for their portion (lower sodium). Dice chicken small for the 1yo.",
+   groceryItems:[
+     {name:"Chicken breast, 1 lb (thinly sliced)",section:"meat"},{name:"Kikkoman Stir-Fry Sauce",section:"pantry"},
+     {name:"Vegetable oil, 2 tbsp",section:"pantry"},{name:"Carrots, 1 cup (julienned)",section:"produce"},
+     {name:"Bell pepper, 1 (sliced)",section:"produce"},{name:"Broccoli florets, 1 cup",section:"produce"},
+     {name:"Garlic, 2 cloves (minced)",section:"produce"},{name:"Ginger, 1-inch piece (minced)",section:"produce"},
+     {name:"Rice or quinoa for serving",section:"pantry"},
+   ],
+   steps:[
+     "Toss chicken in Kikkoman Stir-Fry Sauce and marinate at least 15 min.",
+     "Heat 1 tbsp oil in a large pan or wok over high heat. Add chicken and stir-fry 3–4 min until browned. Remove and set aside.",
+     "In same pan, add remaining oil. Stir-fry garlic, ginger, carrots, bell pepper, and broccoli 3–4 min.",
+     "Return chicken to pan, stir everything together, and cook 2 more min until heated through.",
+     "Serve over cooked rice or quinoa.",
+   ]},
+
+  {id:"grilled-chicken-potatoes",emoji:"🍗",name:"Grilled Chicken with Roasted Potatoes",method:"grill",time:40,cost:"$13–16",cals:460,
+   desc:"Marinated grilled chicken breasts with garlicky oven-roasted potatoes. A classic American backyard dinner.",
+   kidsNote:"Plain grilled chicken and roasted potatoes — both kids will eat this without complaint. A reliable family staple.",
+   groceryItems:[
+     {name:"Boneless skinless chicken breasts, 4",section:"meat"},{name:"Potatoes, 4 large (cut into 1-inch cubes)",section:"produce"},
+     {name:"Olive oil, 4 tbsp total",section:"pantry"},{name:"Lemon juice, 1 tbsp",section:"produce"},
+     {name:"Garlic powder, 2 tsp",section:"pantry"},{name:"Dried oregano, 1 tsp",section:"pantry"},
+     {name:"Onion powder, 1 tsp",section:"pantry"},{name:"Dried rosemary, 1 tsp",section:"pantry"},
+     {name:"Smoked paprika, ½ tsp (optional)",section:"pantry"},{name:"Salt & pepper",section:"pantry"},
+     {name:"Fresh parsley (optional)",section:"produce"},
+   ],
+   steps:[
+     "Marinate chicken: mix 2 tbsp olive oil, lemon juice, garlic powder, oregano, smoked paprika, salt & pepper. Coat chicken and marinate at least 15–30 min.",
+     "Preheat oven to 425°F. Toss potatoes with 2 tbsp olive oil, garlic powder, onion powder, rosemary, salt & pepper. Spread on baking sheet.",
+     "Roast potatoes 25–30 min, flipping halfway, until golden and crispy.",
+     "Preheat grill to medium-high. Grill chicken 6–8 min per side until internal temp reaches 165°F.",
+     "Serve grilled chicken with roasted potatoes. Garnish with fresh parsley.",
+   ]},
+
+  {id:"roast-chicken",emoji:"🐓",name:"Roast Chicken with Vegetables",method:"oven",time:120,cost:"$18–22",cals:510,
+   desc:"A whole roasted chicken with lemon, rosemary, and thyme, surrounded by roasted potatoes and carrots.",
+   kidsNote:"Great Sunday dinner. Leg and thigh meat is softest for the kids. Shred the meat before serving. Mash the carrots a bit for the 1yo.",
+   groceryItems:[
+     {name:"Whole chicken, 4–5 lbs",section:"meat"},{name:"Lemon, 1 (halved)",section:"produce"},
+     {name:"Yellow onion, 1 (quartered)",section:"produce"},{name:"Garlic, 1 head (halved)",section:"produce"},
+     {name:"Olive oil, 2 tbsp",section:"pantry"},{name:"Fresh rosemary, 2 tsp",section:"produce"},
+     {name:"Fresh or dried thyme, 2 tsp",section:"produce"},{name:"Potatoes, 4 large (cut into wedges)",section:"produce"},
+     {name:"Carrots, 3 (peeled, cut into sticks)",section:"produce"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 375°F. Place whole chicken in roasting pan. Stuff cavity with lemon, onion, and garlic.",
+     "Rub outside of chicken with olive oil, rosemary, thyme, salt, and pepper.",
+     "Roast 1.5 to 2 hours until internal temp reaches 165°F. Baste occasionally with drippings.",
+     "Toss potatoes and carrots with olive oil, salt, and pepper. Add around the chicken for the last 45 min of cooking.",
+     "Let chicken rest 10 min. Carve and serve with roasted vegetables.",
+   ]},
+
+  {id:"quick-stir-fry",emoji:"🥢",name:"Quick Chicken Stir-Fry (Kikkoman)",method:"stovetop",time:15,cost:"$10–13",cals:380,
+   desc:"Pre-cooked chicken strips with frozen stir-fry veggies and Kikkoman sauce. On the table in 15 minutes.",
+   kidsNote:"The fastest weeknight dinner on the list. Use Kikkoman sauce lightly for the kids' portions. Both girls will eat this over rice.",
+   groceryItems:[
+     {name:"Pre-cooked chicken strips, 1 lb",section:"meat"},{name:"Frozen stir-fry vegetable mix, 12 oz",section:"frozen"},
+     {name:"Vegetable oil, 2 tbsp",section:"pantry"},{name:"Kikkoman Stir-Fry Sauce, ½ cup",section:"pantry"},
+     {name:"Cooked rice, 2 cups (white or brown)",section:"pantry"},
+   ],
+   steps:[
+     "In a large skillet or wok, heat oil over high heat.",
+     "Add frozen veggies and stir-fry 4–5 min until crisp-tender.",
+     "Stir in chicken strips and Kikkoman Stir-Fry Sauce. Cook 2–3 min until everything is warmed through.",
+     "Serve over rice, spooning extra sauce on top.",
+   ]},
+
+  {id:"homemade-pizza",emoji:"🍕",name:"Homemade Pizza",method:"oven",time:25,cost:"$10–14",cals:580,
+   desc:"Homemade pizza on store-bought dough with marinara, mozzarella, and your favorite toppings. Baked at high heat for a crispy crust.",
+   kidsNote:"A guaranteed family win. Let the 3yo help put toppings on. Cut into small squares for the 1yo.",
+   groceryItems:[
+     {name:"Pizza dough, 1 package (or homemade)",section:"bread"},{name:"Marinara sauce, 1 cup",section:"pantry"},
+     {name:"Shredded mozzarella, 2 cups",section:"dairy"},{name:"Pepperoni or toppings of choice, ½ cup",section:"meat"},
+     {name:"Olive oil, 2 tbsp",section:"pantry"},{name:"Fresh basil (optional)",section:"produce"},
+   ],
+   steps:[
+     "Preheat oven to 475°F. Place pizza stone or baking sheet inside to heat up.",
+     "Roll out pizza dough on a floured surface to desired size. Transfer to parchment paper.",
+     "Spread marinara sauce over dough. Sprinkle mozzarella evenly. Add desired toppings.",
+     "Transfer pizza on parchment to the hot stone or baking sheet. Bake 12–15 min until crust is golden and cheese is bubbly.",
+     "Drizzle with olive oil and sprinkle fresh basil if desired. Slice and serve.",
+   ]},
+
+  {id:"pasta-primavera",emoji:"🍝",name:"Pasta Primavera",method:"stovetop",time:17,cost:"$10–13",cals:380,
+   desc:"Pasta with garlic-sautéed frozen vegetables, lemon zest, and Parmesan. A light 17-minute meatless dinner.",
+   kidsNote:"Frozen veggies get soft enough for the 1yo to eat safely. A great lighter night when you want something quick.",
+   groceryItems:[
+     {name:"Penne or bowties, 12 oz",section:"pantry"},{name:"Frozen mixed vegetables (peas, carrots, zucchini), 3 cups",section:"frozen"},
+     {name:"Olive oil, 3 tbsp",section:"pantry"},{name:"Garlic, 3 cloves (minced)",section:"produce"},
+     {name:"Lemon, 1 (zested, optional)",section:"produce"},{name:"Parmesan cheese, ⅓ cup (grated)",section:"dairy"},
+     {name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Cook pasta per package, adding frozen veggies in the last 4 min. Drain.",
+     "In the same pot over medium heat, heat olive oil. Sauté garlic until fragrant (~30 sec).",
+     "Return pasta and veggies to pot. Toss with lemon zest, Parmesan, salt, and pepper.",
+     "Serve immediately.",
+   ]},
+
+  {id:"bbq-ribs-mac",emoji:"🍖",name:"Grilled BBQ Ribs with Mac & Cheese",method:"grill",time:150,cost:"$25–30",cals:680,
+   desc:"Baby back ribs slow-grilled with BBQ sauce for 2–3 hours, served with homemade mac and cheese.",
+   kidsNote:"The mac and cheese is the star for kids! Pull rib meat off the bone for the 3yo. The 1yo can have mac and cheese with small pieces of rib meat.",
+   groceryItems:[
+     {name:"Baby back ribs, 2 racks",section:"meat"},{name:"BBQ sauce, ½ cup",section:"pantry"},
+     {name:"Elbow macaroni, 8 oz",section:"pantry"},{name:"Butter, 2 tbsp",section:"dairy"},
+     {name:"All-purpose flour, 2 tbsp",section:"pantry"},{name:"Whole milk, 2 cups",section:"dairy"},
+     {name:"Shredded cheddar cheese, 2 cups",section:"dairy"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Prepare ribs: Preheat grill to medium heat (or oven to 300°F). Season ribs with salt and pepper. Brush with BBQ sauce. Grill 2–3 hours, brushing with more sauce every 30 min, until ribs are tender.",
+     "Cook macaroni per package instructions. Drain and set aside.",
+     "Make cheese sauce: Melt butter in saucepan over medium heat. Whisk in flour and cook 1 min. Gradually whisk in milk and cook 5–7 min until thickened.",
+     "Stir in cheddar cheese until melted and smooth. Season with salt and pepper. Toss with macaroni.",
+     "Serve ribs alongside mac and cheese.",
+   ]},
+
+  {id:"pulled-pork",emoji:"🍖",name:"BBQ Pulled Pork Sandwiches",method:"slowcooker",timeLabel:"8 hrs",time:15,cost:"$16–20",cals:520,
+   desc:"Pork shoulder slow-cooked all day in BBQ sauce until fall-apart tender. Pile it on toasted buns with coleslaw.",
+   kidsNote:"Pulled pork is perfect toddler texture — soft and easy to chew. Serve in small soft bun pieces for the 1yo. A family crowd-pleaser.",
+   groceryItems:[
+     {name:"Pork shoulder or pork butt, 2–3 lbs",section:"meat"},{name:"BBQ sauce, 1 cup",section:"pantry"},
+     {name:"Yellow onion, 1 (sliced)",section:"produce"},{name:"Sandwich buns, 8",section:"bread"},
+     {name:"Coleslaw kit or bagged coleslaw, 1 cup",section:"produce"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Season pork with salt and pepper.",
+     "Place pork in slow cooker with sliced onion and ½ cup BBQ sauce. Cook on LOW 8 hours until tender and easily shredable.",
+     "Remove pork and shred with two forks. Mix shredded pork with remaining ½ cup BBQ sauce.",
+     "Toast sandwich buns. Top with pulled pork and coleslaw.",
+     "Serve with baked beans or chips on the side.",
+   ]},
+
+  {id:"spaghetti-meat-sauce",emoji:"🍝",name:"Spaghetti with Meat Sauce",method:"stovetop",time:30,cost:"$12–15",cals:510,
+   desc:"Classic spaghetti with homemade meat sauce using jarred marinara. Serve with garlic bread.",
+   kidsNote:"A classic kid dinner. Cut spaghetti with kitchen scissors for the 1yo to make it easier to manage. Sprinkle Parmesan on top.",
+   groceryItems:[
+     {name:"Spaghetti, 12 oz",section:"pantry"},{name:"Ground beef, 1 lb",section:"meat"},
+     {name:"Yellow onion, 1 small (finely chopped)",section:"produce"},{name:"Garlic, 2 cloves (minced)",section:"produce"},
+     {name:"Marinara sauce, 24 oz jar",section:"pantry"},{name:"Dried oregano, ½ tsp",section:"pantry"},
+     {name:"Red pepper flakes, ½ tsp (optional)",section:"pantry"},{name:"Parmesan cheese (for serving)",section:"dairy"},
+     {name:"Garlic bread, 4 slices",section:"bread"},
+   ],
+   steps:[
+     "Bring a large pot of salted water to boil. Cook spaghetti al dente per package. Drain, reserving some pasta water.",
+     "In a large skillet over medium-high, brown ground beef with onion until no longer pink (5–7 min). Drain excess fat.",
+     "Add garlic; cook 30 sec. Stir in marinara, oregano, and pepper flakes. Simmer 8–10 min.",
+     "Toss sauce with spaghetti. Add a splash of pasta water if too thick.",
+     "Divide onto plates, sprinkle Parmesan, and serve with garlic bread.",
+   ]},
+
+  {id:"baked-ziti",emoji:"🍝",name:"Baked Ziti",method:"oven",time:35,cost:"$12–15",cals:540,
+   desc:"Ground beef and marinara layered with ziti pasta, ricotta, mozzarella, and Parmesan, then baked golden.",
+   kidsNote:"Kids love baked pasta. The 1yo can eat this easily — soft pasta with cheesy sauce is perfect. A guaranteed dinner win.",
+   groceryItems:[
+     {name:"Ziti or penne, 12 oz",section:"pantry"},{name:"Ground beef, 1 lb",section:"meat"},
+     {name:"Marinara sauce, 24 oz jar",section:"pantry"},{name:"Ricotta or cottage cheese, 1 cup",section:"dairy"},
+     {name:"Shredded mozzarella, 1 cup",section:"dairy"},{name:"Parmesan cheese, ½ cup (grated)",section:"dairy"},
+     {name:"Italian seasoning, 1 tsp",section:"pantry"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 375°F. Cook pasta 2 min under package al dente. Drain.",
+     "Brown beef in skillet; season with salt, pepper, and Italian seasoning. Stir in marinara.",
+     "In a bowl, mix ricotta + half the Parmesan + a pinch of salt.",
+     "In a 9×13\" baking dish: layer half the pasta, half the meat sauce, dollops of ricotta, then repeat. Top with mozzarella and remaining Parmesan.",
+     "Bake 20 min until bubbly and golden. Let rest 5 min before serving.",
+   ]},
+
+  {id:"hamburger-sliders",emoji:"🍔",name:"Hamburger Sliders",method:"blackstone",time:20,cost:"$12–15",cals:460,
+   desc:"Small beef patties cooked on a griddle with melted cheddar, served on slider buns with a quick coleslaw.",
+   kidsNote:"Mini sliders are great for the 3yo. For the 1yo, crumble a small cooked patty and serve with a soft bun piece.",
+   groceryItems:[
+     {name:"Ground beef, 1 lb",section:"meat"},{name:"Slider buns, 8",section:"bread"},
+     {name:"Cheddar cheese, 4 slices (halved)",section:"dairy"},{name:"Coleslaw mix (cabbage/carrot), ¼ cup",section:"produce"},
+     {name:"Mayo, 2 tbsp",section:"pantry"},{name:"Apple cider vinegar, 1 tsp",section:"pantry"},
+     {name:"Pickle slices",section:"pantry"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Mix coleslaw mix with mayo and apple-cider vinegar. Set aside.",
+     "Preheat griddle or Blackstone over medium-high. Form beef into eight 2-oz patties. Season with salt & pepper.",
+     "Cook patties 2–3 min per side. During last minute, top each with half a slice of cheese to melt.",
+     "Assemble sliders: bun bottom, patty, pickles, coleslaw, bun top.",
+   ]},
+
+  {id:"meatloaf-mashed",emoji:"🍖",name:"Meatloaf with Mashed Potatoes",method:"oven",time:65,cost:"$14–18",cals:560,
+   desc:"Classic American meatloaf with a ketchup glaze, served with creamy mashed potatoes.",
+   kidsNote:"Mashed potatoes are perfect for the 1yo. Cut meatloaf into small cubes. A true comfort meal the whole family enjoys.",
+   groceryItems:[
+     {name:"Ground beef (or beef/pork mix), 1 lb",section:"meat"},{name:"Breadcrumbs, ½ cup",section:"pantry"},
+     {name:"Whole milk, ¼ cup",section:"dairy"},{name:"Yellow onion, 1 small (finely chopped)",section:"produce"},
+     {name:"Egg, 1",section:"dairy"},{name:"Worcestershire sauce, 1 tbsp",section:"pantry"},
+     {name:"Ketchup, 1 tbsp + ¼ cup for topping",section:"pantry"},{name:"Large potatoes, 4 (peeled and cubed)",section:"produce"},
+     {name:"Butter, ¼ cup",section:"dairy"},{name:"Milk for potatoes, ½ cup",section:"dairy"},
+     {name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 350°F. Mix ground beef, breadcrumbs, ¼ cup milk, onion, egg, Worcestershire, 1 tbsp ketchup, salt, and pepper until combined.",
+     "Shape into a loaf on a baking sheet. Spread ¼ cup ketchup on top.",
+     "Bake 45–50 min until cooked through (160°F internal).",
+     "Meanwhile, boil cubed potatoes in salted water 15–20 min until tender. Drain and mash with butter, ½ cup milk, salt, and pepper until smooth.",
+     "Slice meatloaf and serve with mashed potatoes.",
+   ]},
+
+  {id:"spaghetti-meatballs",emoji:"🍝",name:"Spaghetti and Meatballs",method:"oven",time:40,cost:"$14–18",cals:580,
+   desc:"Homemade baked meatballs simmered in marinara and tossed with spaghetti. An Italian-American classic.",
+   kidsNote:"Cut meatballs in half for the 3yo and quarters for the 1yo. Cut spaghetti with scissors. This is a guaranteed hit.",
+   groceryItems:[
+     {name:"Ground beef or beef/pork mix, 1 lb",section:"meat"},{name:"Breadcrumbs, ¼ cup",section:"pantry"},
+     {name:"Parmesan cheese, ¼ cup (grated)",section:"dairy"},{name:"Egg, 1",section:"dairy"},
+     {name:"Garlic, 2 cloves (minced)",section:"produce"},{name:"Fresh parsley, ¼ cup (chopped)",section:"produce"},
+     {name:"Marinara sauce, 24 oz jar",section:"pantry"},{name:"Spaghetti, 1 lb",section:"pantry"},
+     {name:"Olive oil, 2 tbsp",section:"pantry"},{name:"Salt & pepper",section:"pantry"},
+     {name:"Garlic bread (for serving)",section:"bread"},
+   ],
+   steps:[
+     "Preheat oven to 375°F. Combine ground meat, breadcrumbs, Parmesan, egg, garlic, parsley, salt, and pepper. Mix until combined.",
+     "Roll into 1-inch meatballs and place on a baking sheet. Bake 20 min until golden brown and cooked through.",
+     "Cook spaghetti per package directions. Drain and set aside.",
+     "Heat marinara in a large pan over medium heat. Add cooked meatballs and simmer 10 min, stirring occasionally.",
+     "Toss spaghetti with meatballs and sauce. Serve with Parmesan and garlic bread.",
+   ]},
+
+  {id:"cowboy-casserole",emoji:"🥘",name:"Slow Cooker Cowboy Casserole",method:"slowcooker",timeLabel:"6–8 hrs",time:15,cost:"$14–18",cals:500,
+   desc:"Ground beef, potatoes, beans, and corn in a creamy, cheesy slow-cooker casserole. A hearty one-pot family meal.",
+   kidsNote:"Potatoes and beef get very soft after slow cooking — great texture for the 1yo. Mild, hearty flavor the whole family loves.",
+   groceryItems:[
+     {name:"Ground beef, 1 lb",section:"meat"},{name:"Yellow onion, 1 medium (chopped)",section:"produce"},
+     {name:"Garlic, 3 cloves (minced)",section:"produce"},{name:"Condensed cream of mushroom soup, 1 can (10.75 oz)",section:"pantry"},
+     {name:"Milk, ½ cup",section:"dairy"},{name:"Kidney beans, 1 can (15 oz, drained and rinsed)",section:"pantry"},
+     {name:"Diced tomatoes with green chilies, 1 can (14.5 oz)",section:"pantry"},{name:"Frozen corn, 1 cup",section:"frozen"},
+     {name:"Chili powder, 1 tsp",section:"pantry"},{name:"Sliced potatoes, 4 cups (~1.5 lbs)",section:"produce"},
+     {name:"Shredded cheddar, 1 cup",section:"dairy"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "In a skillet over medium heat, cook ground beef with onion and garlic until no longer pink. Drain.",
+     "Add beef mixture and all remaining ingredients except cheese to slow cooker. Stir to combine.",
+     "Cook on LOW 6–8 hours or HIGH 3–4 hours until potatoes are tender.",
+     "Sprinkle cheese on top, cover, and let melt 5 min before serving.",
+   ]},
+
+  {id:"steak-fajitas",emoji:"🌮",name:"Steak Fajitas",method:"stovetop",time:20,cost:"$15–18",cals:470,
+   desc:"Seared flank or skirt steak with caramelized peppers and onions in warm flour tortillas. 20 minutes.",
+   kidsNote:"Set aside a small plain portion of steak and peppers before seasoning for the kids. Serve in small, soft flour tortillas.",
+   groceryItems:[
+     {name:"Flank or skirt steak, 1 lb (thinly sliced)",section:"meat"},{name:"Bell peppers, 2 (any colors, sliced)",section:"produce"},
+     {name:"Yellow onion, 1 large (sliced)",section:"produce"},{name:"Vegetable oil, 2 tbsp",section:"pantry"},
+     {name:"Fajita seasoning, 1 tbsp",section:"pantry"},{name:"Small flour tortillas, 8",section:"bread"},
+     {name:"Lime wedges",section:"produce"},{name:"Sour cream, salsa, guacamole (optional)",section:"dairy"},
+   ],
+   steps:[
+     "Toss sliced steak with 1 tbsp oil and fajita seasoning.",
+     "Heat 1 tbsp oil in a skillet over high heat. Sear steak 2 min per side. Remove and keep warm.",
+     "In same skillet, add peppers and onion. Stir-fry 4–5 min until crisp-tender.",
+     "Slice steak against the grain.",
+     "Serve steak and veggies in warm tortillas with lime, sour cream, salsa, and guacamole.",
+   ]},
+
+  {id:"chicken-rice-casserole",emoji:"🍗",name:"One-Pot Chicken & Rice Casserole",method:"oven",time:35,cost:"$12–15",cals:480,
+   desc:"Chicken, rice, and veggies in a creamy sauce, all cooked together in one oven-safe skillet.",
+   kidsNote:"Perfect comfort food for the whole family. The rice and chicken get soft in the creamy sauce — ideal for the 1yo.",
+   groceryItems:[
+     {name:"Chicken breast, 1 lb (diced)",section:"meat"},{name:"Yellow onion, 1 small (chopped)",section:"produce"},
+     {name:"Long-grain rice, 1 cup (rinsed)",section:"pantry"},{name:"Chicken broth, 1½ cups",section:"pantry"},
+     {name:"Frozen mixed vegetables, 1 cup",section:"frozen"},{name:"Cream of chicken soup, 1 can (10½ oz)",section:"pantry"},
+     {name:"Shredded cheddar, 1 cup",section:"dairy"},{name:"Oil, 1 tbsp",section:"pantry"},
+     {name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Preheat oven to 375°F.",
+     "In a 9\" oven-safe skillet, heat oil over medium. Sauté onion 2 min, add chicken and cook until no longer pink.",
+     "Stir in rice, broth, soup, and veggies. Season lightly. Bring to a simmer.",
+     "Cover with foil and bake 20 min. Remove foil, sprinkle cheddar, and bake 5 more min until cheese melts.",
+   ]},
+
+  {id:"beef-stir-fry",emoji:"🥢",name:"Beef Stir-Fry with Vegetables",method:"stovetop",time:25,cost:"$14–17",cals:450,
+   desc:"Thinly sliced beef marinated in soy sauce and oyster sauce, stir-fried with fresh vegetables over rice.",
+   kidsNote:"Use low-sodium soy sauce and go easy on the ginger for the kids' portion. Serve over plain rice for the 1yo.",
+   groceryItems:[
+     {name:"Beef (flank, sirloin, or ribeye), 1 lb (thinly sliced)",section:"meat"},{name:"Soy sauce, 2 tbsp",section:"pantry"},
+     {name:"Oyster sauce, 1 tbsp",section:"pantry"},{name:"Rice vinegar, 1 tbsp",section:"pantry"},
+     {name:"Cornstarch, 1 tbsp",section:"pantry"},{name:"Vegetable oil, 2 tbsp",section:"pantry"},
+     {name:"Bell pepper, 1 (sliced)",section:"produce"},{name:"Yellow onion, 1 (sliced)",section:"produce"},
+     {name:"Broccoli florets, 1 cup",section:"produce"},{name:"Snap peas, 1 cup",section:"produce"},
+     {name:"Garlic, 2 cloves (minced)",section:"produce"},{name:"Ginger, 1-inch piece (minced)",section:"produce"},
+     {name:"Cooked rice for serving",section:"pantry"},
+   ],
+   steps:[
+     "Marinate beef: mix soy sauce, oyster sauce, rice vinegar, and cornstarch. Add beef and marinate at least 15 min.",
+     "Heat 1 tbsp oil in large wok or pan over high heat. Add beef and stir-fry 2–3 min until browned. Remove and set aside.",
+     "Add remaining oil. Stir-fry garlic, ginger, onion, bell pepper, broccoli, and snap peas 3–4 min.",
+     "Return beef to pan. Stir everything together and cook 2 more min. Serve over cooked rice.",
+   ]},
+
+  {id:"mexican-chicken-rollups",emoji:"🌯",name:"Mexican Chicken Roll-Ups",method:"oven",time:40,cost:"$13–16",cals:440,
+   desc:"Shredded chicken with sour cream, taco seasoning, and cheese rolled in flour tortillas and baked in a creamy sauce.",
+   kidsNote:"The 3yo will love the roll-up format. For the 1yo, pull apart a roll-up and serve the filling with soft tortilla pieces.",
+   groceryItems:[
+     {name:"Cooked chicken, 2½ cups (diced)",section:"meat"},{name:"Sour cream, 1½ cups total",section:"dairy"},
+     {name:"Taco seasoning, 3 tsp total",section:"pantry"},{name:"Cream of mushroom soup, 1 can (split for filling + topping)",section:"pantry"},
+     {name:"Shredded cheddar cheese, 1½ cups total",section:"dairy"},{name:"Yellow onion, 1 small (optional)",section:"produce"},
+     {name:"Salsa, ½ cup",section:"pantry"},{name:"Flour tortillas, 10 (7-inch)",section:"bread"},
+   ],
+   steps:[
+     "Combine chicken, ½ cup sour cream, 1½ tsp taco seasoning, ½ can cream of mushroom soup, 1 cup cheddar, and onion (if using).",
+     "Place about ⅓ cup filling into each tortilla. Roll up and place seam-side down in a greased 9×13\" pan. Add a thin layer of filling in the bottom of the pan first to keep tortillas soft.",
+     "Mix topping: 1 cup sour cream + ½ can soup + 1½ tsp taco seasoning. Pour over rolled tortillas.",
+     "Sprinkle remaining ½ cup cheddar over the top.",
+     "Bake at 350°F for 30–45 minutes until hot and bubbly.",
+   ]},
+
+  {id:"chicken-alfredo",emoji:"🍝",name:"Chicken Alfredo",method:"stovetop",time:30,cost:"$14–17",cals:560,
+   desc:"Pan-seared chicken breasts in a simple Parmesan cream sauce tossed with fettuccine.",
+   kidsNote:"Both kids will love creamy pasta. Cut noodles shorter for the 1yo. A near-guaranteed clean plate.",
+   groceryItems:[
+     {name:"Boneless skinless chicken breasts, 4",section:"meat"},{name:"Fettuccine or pasta of choice, 1 lb",section:"pantry"},
+     {name:"Heavy cream, ½ cup",section:"dairy"},{name:"Chicken broth, ½ cup",section:"pantry"},
+     {name:"Parmesan cheese, ½ cup (grated)",section:"dairy"},{name:"Olive oil, 1 tbsp",section:"pantry"},
+     {name:"Fresh parsley, ¼ cup (optional, for garnish)",section:"produce"},{name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Season chicken with salt and pepper. Heat olive oil in skillet over medium. Cook chicken 6–7 min per side until golden and cooked through. Set aside.",
+     "Cook pasta per package instructions. Drain.",
+     "In same skillet, add heavy cream and chicken broth. Bring to a simmer.",
+     "Stir in Parmesan and cook 2–3 min until sauce thickens slightly.",
+     "Slice chicken and add to sauce. Toss pasta in Alfredo sauce. Garnish with parsley and serve immediately.",
+   ]},
+
+  {id:"steak-frites",emoji:"🥩",name:"Steak Frites",method:"stovetop",time:40,cost:"$18–22",cals:620,
+   desc:"Pan-seared steaks with garlic butter, served with crispy oven-baked french fries.",
+   kidsNote:"Homemade fries are a big kid hit! Slice steak thin and cut small for both kids. The 1yo loves soft fry pieces.",
+   groceryItems:[
+     {name:"Steaks (ribeye, sirloin, or flank), 4",section:"meat"},{name:"Large russet potatoes, 4 (cut into fries)",section:"produce"},
+     {name:"Olive oil, 2 tbsp",section:"pantry"},{name:"Butter, 2 tbsp",section:"dairy"},
+     {name:"Garlic, 2 cloves (smashed)",section:"produce"},{name:"Fresh thyme (optional)",section:"produce"},
+     {name:"Salt & pepper",section:"pantry"},
+   ],
+   steps:[
+     "Cook fries: Preheat oven to 425°F. Toss fries with olive oil, salt, and pepper. Spread on baking sheet. Roast 25–30 min, flipping halfway, until golden and crispy.",
+     "Season steaks with salt and pepper.",
+     "Heat a cast-iron skillet over medium-high. Add steaks and cook 4–5 min per side for medium-rare, or to desired doneness.",
+     "In last minute, add butter, garlic, and thyme to pan. Spoon melted butter over steaks.",
+     "Rest steaks 5 min. Serve with crispy fries and a simple side salad or sautéed green beans.",
+   ]},
+];
+
+var DAYS=['Monday','Tuesday','Wednesday','Thursday'];
+var EMPTY={plan:{},checked:{},custom:[],autoItems:[],groceryBuilt:false,history:{},treats:{}};
+
+var S=Object.assign({},EMPTY);
+var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',confirmReset:false,synced:false};
+
+function fbWrite(d){fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}
+function gM(t){return METHODS[t]||METHODS.stovetop;}
+function sS(ns){S=Object.assign({},S,ns);fbWrite(S);render();}
+function sU(nu){U=Object.assign({},U,nu);render();}
+
+function getLastUsed(id){
+  var d=S.history&&S.history[id];if(!d)return null;
+  return Math.floor((new Date()-new Date(d))/86400000);
+}
+function lastUsedBadge(days){
+  if(days===null||days===undefined||days>28)return'';
+  var label=days<7?'This week':days<14?'Last week':days<21?'2 wks ago':'3 wks ago';
+  var bg=days<7?'#FEE2E2':days<14?'#FEF3C7':days<21?'#FEF9C3':'#F3F4F6';
+  var color=days<7?'#DC2626':days<14?'#D97706':days<21?'#CA8A04':'#6B7280';
+  return'<span style="background:'+bg+';color:'+color+';font-size:10px;font-family:sans-serif;font-weight:700;padding:2px 8px;border-radius:10px">'+label+'</span>';
+}
+function buildList(){
+  var seen={},list=[];
+  Object.values(S.plan).forEach(function(id){
+    var r=RECIPES.find(function(x){return x.id===id;});if(!r)return;
+    r.groceryItems.forEach(function(item){
+      var key=item.name.toLowerCase().replace(/[^\w]/g,'').slice(0,22);
+      if(!seen[key]){seen[key]=true;list.push(Object.assign({},item,{id:'auto-'+key}));}
+    });
+  });
+  return list;
+}
+
+document.addEventListener('click',function(e){
+  var el=e.target.closest('[data-a]');if(!el)return;
+  var a=el.dataset.a,p=el.dataset.p;
+
+  if(a==='tab'){sU({tab:+p});}
+  else if(a==='pick-day'){sU({pickingDay:+p,filter:'all'});}
+  else if(a==='close-pick'){sU({pickingDay:null});}
+  else if(a==='set-filter'){sU({filter:p});}
+  else if(a==='select-recipe'){
+    if(U.pickingDay===null)return;
+    var np=Object.assign({},S.plan);np[U.pickingDay]=p;
+    sS({plan:np,groceryBuilt:false});sU({pickingDay:null});
+  }
+  else if(a==='remove-meal'){
+    var np2=Object.assign({},S.plan);delete np2[+p];sS({plan:np2,groceryBuilt:false});
+  }
+  else if(a==='view-recipe'){sU({viewRecipe:p});}
+  else if(a==='close-recipe'){sU({viewRecipe:null});}
+  else if(a==='build-grocery'){sS({autoItems:buildList(),groceryBuilt:true,checked:{}});}
+  else if(a==='toggle-check'){
+    var nc=Object.assign({},S.checked);nc[p]=!nc[p];sS({checked:nc});
+  }
+  else if(a==='add-custom'){
+    var inp=document.getElementById('ci');
+    var sel=document.getElementById('cs');
+    if(!inp||!inp.value.trim())return;
+    var nc2=S.custom.concat([{id:'c-'+Date.now(),name:inp.value.trim(),section:sel?sel.value:'produce',custom:true}]);
+    inp.value='';sS({custom:nc2});
+  }
+  else if(a==='remove-custom'){sS({custom:S.custom.filter(function(c){return c.id!==p;})});}
+  else if(a==='new-week-ask'){sU({confirmReset:true});}
+  else if(a==='new-week-no'){sU({confirmReset:false});}
+  else if(a==='new-week-yes'){
+    var today=new Date().toISOString().split('T')[0];
+    var nh=Object.assign({},S.history||{});
+    Object.values(S.plan).forEach(function(id){nh[id]=today;});
+    sS(Object.assign({},EMPTY,{history:nh}));sU({confirmReset:false,tab:0});
+  }
+});
+
+function render(){
+  var r=document.getElementById('root');
+  if(!U.synced){r.innerHTML='<div style="min-height:100vh;background:linear-gradient(160deg,#78350F,#B45309);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px"><div style="font-size:52px">🍽️</div><div style="color:rgba(255,255,255,0.8);font-family:sans-serif;font-size:16px">Syncing your meal plan…</div></div>';return;}
+  var modals=(U.viewRecipe?rRecipeModal():'')+(U.pickingDay!==null?rPickerModal():'');
+  r.innerHTML=modals+rApp();
+}
+
+function rApp(){
+  var tabs=['🗓️ Plan','🛒 Grocery','📖 Recipes'];
+  var tabBar='<div class="sx" style="background:#fff;border-bottom:2px solid #E5E7EB;padding:0 8px;display:flex">'+tabs.map(function(t,i){var a=(U.tab===i);return'<button data-a="tab" data-p="'+i+'" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:600;white-space:nowrap;color:'+(a?'#B45309':'#6B7280')+';border-bottom:'+(a?'3px solid #B45309':'3px solid transparent')+'">'+t+'</button>';}).join('')+'</div>';
+  var content=(U.tab===0?rPlan():'')+(U.tab===1?rGrocery():'')+(U.tab===2?rRecipes():'');
+  return'<div style="background:#FFFBF5;min-height:100vh">'+rHeader()+tabBar+'<div style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>';
+}
+
+function rHeader(){
+  var planned=Object.keys(S.plan).length;
+  var cost=Object.values(S.plan).reduce(function(s,id){var r=RECIPES.find(function(x){return x.id===id;});if(!r)return s;var m=r.cost.match(/\$(\d+)–(\d+)/);return m?s+(+m[1]+ +m[2])/2:s;},0);
+  return'<div style="background:linear-gradient(135deg,#B45309,#78350F);padding:calc(var(--safe-top) + 16px) 20px 16px"><div style="color:rgba(255,255,255,0.7);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:sans-serif;margin-bottom:4px">Family Meal Planner</div><div style="color:#fff;font-family:sans-serif;font-weight:800;font-size:22px;margin-bottom:12px">This Week\'s Dinners</div><div style="display:flex;gap:10px"><div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 14px;flex:1;text-align:center"><div style="color:#fff;font-weight:800;font-size:22px;font-family:sans-serif">'+planned+'</div><div style="color:rgba(255,255,255,0.7);font-size:11px;font-family:sans-serif">of 4 planned</div></div><div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 14px;flex:1;text-align:center"><div style="color:#fff;font-weight:800;font-size:22px;font-family:sans-serif">'+(cost>0?'~$'+Math.round(cost):'-')+'</div><div style="color:rgba(255,255,255,0.7);font-size:11px;font-family:sans-serif">est. this week</div></div></div></div>';
+}
+
+function rPlan(){
+  var days=DAYS.map(function(day,i){
+    var id=S.plan[i];
+    var r=id?RECIPES.find(function(x){return x.id===id;}):null;
+    var m=r?gM(r.method):null;
+    var lu=r?getLastUsed(r.id):null;
+    if(r){
+      return'<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:16px;padding:14px 16px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#B45309">'+day+'</div><button data-a="remove-meal" data-p="'+i+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:18px;padding:0 4px">✕</button></div><div style="display:flex;align-items:center;gap:12px"><div style="font-size:32px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A;margin-bottom:4px">'+r.name+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+lastUsedBadge(lu)+'</div></div><button data-a="view-recipe" data-p="'+r.id+'" style="background:#FFF7ED;border:1px solid #FCD34D;border-radius:10px;padding:8px 12px;cursor:pointer;font-family:sans-serif;font-size:12px;font-weight:700;color:#B45309;flex-shrink:0">View</button></div></div>';
+    } else {
+      return'<button data-a="pick-day" data-p="'+i+'" style="width:100%;background:#fff;border:2px dashed #E5E7EB;border-radius:16px;padding:18px;margin-bottom:10px;cursor:pointer;text-align:center"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#B45309;margin-bottom:6px">'+day+'</div><div style="font-size:28px;margin-bottom:6px">＋</div><div style="font-family:sans-serif;font-size:13px;color:#9CA3AF">Tap to pick a meal</div></button>';
+    }
+  }).join('');
+  var resetHtml=U.confirmReset?
+    '<div style="background:#FEE2E2;border:1.5px solid #FCA5A5;border-radius:14px;padding:16px;margin-top:16px;text-align:center"><div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#991B1B;margin-bottom:6px">Start a new week?</div><div style="font-family:sans-serif;font-size:13px;color:#7F1D1D;margin-bottom:14px">This clears your current plan and grocery list.</div><div style="display:flex;gap:10px"><button data-a="new-week-no" style="flex:1;background:#fff;border:1.5px solid #FCA5A5;border-radius:10px;padding:11px;font-family:sans-serif;font-size:14px;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button><button data-a="new-week-yes" style="flex:1;background:#DC2626;color:#fff;border:none;border-radius:10px;padding:11px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer">New Week</button></div></div>':
+    '<div style="margin-top:16px;text-align:center"><button data-a="new-week-ask" style="background:none;border:none;color:#9CA3AF;font-family:sans-serif;font-size:13px;cursor:pointer;text-decoration:underline">Start a new week</button></div>';
+  return days+resetHtml;
+}
+
+function rGrocery(){
+  if(!S.groceryBuilt){
+    var planned=Object.keys(S.plan).length;
+    return'<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:16px">🛒</div><div style="font-family:sans-serif;font-weight:700;font-size:18px;color:#1A1A1A;margin-bottom:8px">Build your grocery list</div><div style="font-family:sans-serif;font-size:14px;color:#6B7280;margin-bottom:24px;line-height:1.6">'+
+      (planned>0?'Based on your '+planned+' planned meal'+(planned>1?'s':'')+', we\'ll pull all the ingredients automatically.':'Plan your meals first, then come back to build your grocery list.')+
+    '</div>'+(planned>0?'<button data-a="build-grocery" style="background:#B45309;color:#fff;border:none;border-radius:14px;padding:16px 32px;font-family:sans-serif;font-size:16px;font-weight:700;cursor:pointer">Build List →</button>':'')+'</div>';
+  }
+
+  var allItems=(S.autoItems||[]).concat(S.custom||[]);
+  var checkedCount=Object.values(S.checked||{}).filter(Boolean).length;
+  var sections=SECTS.map(function(sect){
+    var items=allItems.filter(function(it){return it.section===sect.id;});
+    if(!items.length)return'';
+    return'<div style="margin-bottom:20px"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;background:'+sect.bg+';padding:8px 14px;border-radius:10px;margin-bottom:8px">'+sect.label+'</div>'+items.map(function(it){var ck=!!S.checked[it.id];return'<div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid #F3F4F6"><button data-a="toggle-check" data-p="'+it.id+'" style="width:24px;height:24px;border-radius:6px;border:2px solid '+(ck?'#B45309':'#D1D5DB')+';background:'+(ck?'#B45309':'transparent')+';color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(ck?'✓':'')+'</button><span style="font-family:sans-serif;font-size:14px;color:'+(ck?'#9CA3AF':'#1A1A1A')+';text-decoration:'+(ck?'line-through':'none')+';flex:1">'+it.name+'</span>'+(it.custom?'<button data-a="remove-custom" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:0 4px">✕</button>':'')+(it.id&&it.id.startsWith&&it.id.startsWith('c-')?'<button data-a="remove-custom" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:0 4px">✕</button>':'')+'</div>';}).join('')+'</div>';
+  }).join('');
+
+  return'<div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">'+checkedCount+' of '+allItems.length+' items got</div><button data-a="build-grocery" style="background:#FFF7ED;border:1px solid #FCD34D;border-radius:10px;padding:7px 14px;font-family:sans-serif;font-size:12px;font-weight:700;color:#B45309;cursor:pointer">Rebuild</button></div>'+sections+
+    '<div style="background:#FFFBF5;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px;margin-top:8px"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;margin-bottom:10px">Add item</div><div style="display:flex;gap:8px"><input id="ci" type="text" placeholder="Item name…" style="flex:1;padding:10px 12px;border-radius:10px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:14px;outline:none;background:#fff"/><select id="cs" style="padding:10px 8px;border-radius:10px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:13px;color:#1A1A1A;background:#fff;cursor:pointer">'+SECTS.map(function(s){return'<option value="'+s.id+'">'+s.label.replace(/[^\w\s&]/g,'').trim()+'</option>';}).join('')+'</select><button data-a="add-custom" style="background:#B45309;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer">Add</button></div></div>'
+  +'</div>';
+}
+
+function rRecipes(){
+  var opts=[{id:'all',label:'All'},{id:'fresh',label:'🆕 Fresh'},{id:'grill',label:'🔥 Grill'},{id:'blackstone',label:'⬛ Blackstone'},{id:'oven',label:'♨️ Oven'},{id:'stovetop',label:'🍳 Stovetop'},{id:'slowcooker',label:'🥘 Slow Cooker'},{id:'venison',label:'🦌 Venison'}];
+  var list=U.filter==='all'?RECIPES:U.filter==='fresh'?RECIPES.filter(function(r){var d=getLastUsed(r.id);return d===null||d>14;}):U.filter==='venison'?RECIPES.filter(function(r){return r.venison;}):RECIPES.filter(function(r){return r.method===U.filter;});
+  var filters='<div class="sx" style="display:flex;gap:6px;margin-bottom:14px">'+opts.map(function(o){var a=(U.filter===o.id);return'<button data-a="set-filter" data-p="'+o.id+'" style="padding:6px 14px;border-radius:20px;border:none;cursor:pointer;background:'+(a?'#B45309':'#F3F4F6')+';color:'+(a?'#fff':'#6B7280')+';font-family:sans-serif;font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0">'+o.label+'</button>';}).join('')+'</div>';
+  var cards=list.map(function(r){
+    var m=gM(r.method);var lu=getLastUsed(r.id);
+    return'<button data-a="view-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:28px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+(r.venison?'<span style="color:#6B7280;font-family:sans-serif;font-size:11px">🦌</span>':'')+(Object.values(S.plan).includes(r.id)?'<span style="color:#16A34A;font-family:sans-serif;font-size:11px;font-weight:700">✓ Planned</span>':'')+'</div></div></button>';
+  }).join('');
+  return filters+cards;
+}
+
+function rRecipeModal(){
+  var r=RECIPES.find(function(x){return x.id===U.viewRecipe;});if(!r)return'';
+  var m=gM(r.method);
+  var inPlan=Object.values(S.plan).includes(r.id);
+  var days=DAYS.map(function(day,i){
+    var taken=S.plan[i]&&S.plan[i]!==r.id;
+    return'<button data-a="'+(inPlan&&S.plan[i]===r.id?'remove-meal':'select-recipe')+'" data-p="'+(inPlan&&S.plan[i]===r.id?i:r.id)+'" '+(inPlan&&S.plan[i]===r.id?'':'data-day="'+i+'"')+' onclick="'+(inPlan&&S.plan[i]===r.id?'':' var np=Object.assign({},S.plan);np['+i+']=\"')+r.id+(inPlan&&S.plan[i]===r.id?'':'\";sS({plan:np,groceryBuilt:false});sU({viewRecipe:null});event.stopPropagation();')+'" style="padding:6px 14px;border-radius:20px;border:1.5px solid '+(S.plan[i]===r.id?'#B45309':taken?'#E5E7EB':'#E5E7EB')+';background:'+(S.plan[i]===r.id?'#B45309':taken?'#F9FAFB':'#fff')+';color:'+(S.plan[i]===r.id?'#fff':taken?'#D1D5DB':'#1A1A1A')+';cursor:'+(taken?'default':'pointer')+';font-family:sans-serif;font-size:13px;font-weight:600;pointer-events:'+(taken?'none':'auto')+'">'+day+'</button>';
+  }).join('');
+  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-end"><div class="slide-up sy" style="background:#FFFBF5;border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 20px)"><div style="background:linear-gradient(135deg,#B45309,#78350F);padding:20px 20px 22px;border-radius:24px 24px 0 0;position:sticky;top:0"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="font-size:42px">'+r.emoji+'</div><button data-a="close-recipe" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div><div style="color:#fff;font-weight:700;font-size:20px;margin-top:8px;line-height:1.3">'+r.name+'</div><div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">~'+r.cals+' cal</span>'+(r.venison?'<span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">🦌 Venison</span>':'')+(r.kidsNote?'<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;margin-top:8px;font-family:sans-serif;font-size:12px;color:rgba(255,255,255,0.9);width:100%">👶 '+r.kidsNote+'</div>':'')+'</div><div style="margin-top:12px"><div style="color:rgba(255,255,255,0.7);font-family:sans-serif;font-size:11px;margin-bottom:6px">Add to week:</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+days+'</div></div></div><div style="padding:18px 18px 0"><p style="font-family:sans-serif;font-size:14px;color:#6B7280;line-height:1.65;margin-bottom:20px">'+r.desc+'</p><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Ingredients</div>'+r.groceryItems.map(function(it){return'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #E5E7EB"><div style="width:7px;height:7px;border-radius:50%;background:#B45309;flex-shrink:0"></div><div style="font-family:sans-serif;font-size:14px;color:#1A1A1A">'+it.name+'</div></div>';}).join('')+'<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px">Instructions</div>'+r.steps.map(function(step,i){return'<div style="display:flex;gap:12px;padding:12px 0;border-bottom:'+(i<r.steps.length-1?'1px solid #E5E7EB':'none')+'"><div style="width:26px;height:26px;border-radius:50%;background:#FFF7ED;color:#B45309;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:sans-serif;flex-shrink:0;margin-top:2px">'+(i+1)+'</div><div style="font-family:sans-serif;font-size:14px;color:#374151;line-height:1.6">'+step+'</div></div>';}).join('')+'</div></div></div>';
+}
+
+function rPickerModal(){
+  var day=DAYS[U.pickingDay];
+  var opts=[{id:'all',label:'All'},{id:'fresh',label:'🆕 Fresh'},{id:'grill',label:'🔥 Grill'},{id:'blackstone',label:'⬛ Blackstone'},{id:'oven',label:'♨️ Oven'},{id:'stovetop',label:'🍳 Stovetop'},{id:'slowcooker',label:'🥘 Slow Cooker'},{id:'venison',label:'🦌 Venison'}];
+  var list=U.filter==='all'?RECIPES:U.filter==='fresh'?RECIPES.filter(function(r){var d=getLastUsed(r.id);return d===null||d>14;}):U.filter==='venison'?RECIPES.filter(function(r){return r.venison;}):RECIPES.filter(function(r){return r.method===U.filter;});
+  var filters='<div class="sx" style="display:flex;gap:6px;padding:0 18px 12px">'+opts.map(function(o){var a=(U.filter===o.id);return'<button data-a="set-filter" data-p="'+o.id+'" style="padding:6px 14px;border-radius:20px;border:none;cursor:pointer;background:'+(a?'#B45309':'#F3F4F6')+';color:'+(a?'#fff':'#6B7280')+';font-family:sans-serif;font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0">'+o.label+'</button>';}).join('')+'</div>';
+  var cards=list.map(function(r){
+    var m=gM(r.method);var lu=getLastUsed(r.id);var already=Object.values(S.plan).includes(r.id);
+    return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';
+  }).join('');
+  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-end"><div class="slide-up" style="background:#FFFBF5;border-radius:22px 22px 0 0;width:100%;max-height:88vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)"><div style="background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 0;flex-shrink:0"><div style="display:flex;justify-content:center;margin-bottom:10px"><div style="width:40px;height:4px;border-radius:2px;background:#D1D5DB"></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">Pick dinner for '+day+'</div><button data-a="close-pick" style="background:none;border:none;cursor:pointer;font-family:sans-serif;color:#6B7280;font-size:15px;font-weight:600">Cancel</button></div>'+filters+'</div><div class="sy" style="flex:1;padding:8px 16px 16px;overflow-y:auto">'+cards+'</div></div></div>';
+}
+
+function init(){
+  try{var l=localStorage.getItem(SK);if(l)S=JSON.parse(l);}catch(x){}
+  U.synced=true;
+  render();
+  if(location.protocol==='file:')return;
+  try{
+    var es=new EventSource(FB+'/mealPlan.json?accept=text/event-stream');
+    es.addEventListener('put',function(e){
+      var p=JSON.parse(e.data),val=p.data;
+      if(val===null){if(S.plan&&Object.keys(S.plan).length>0)fbWrite(S);}
+      else{S=val||Object.assign({},EMPTY);render();}
+    });
+    es.onerror=function(){es.close();};
+  }catch(x){}
+}
+init();
+}catch(e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:sans-serif"><strong>Startup error:</strong><br>'+e.message+'<br>line: '+((e.stack||'').split('\n')[1]||'')+'</div>';}
+</script>
+</body>
+</html>
