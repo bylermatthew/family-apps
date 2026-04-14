@@ -73,7 +73,7 @@ var U={tab:0,viewWeek:null,picker:null,xW:null,confirmStart:false,synced:false};
 
 function fbWrite(d){fetch(FB+'/fitTogether.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}
 function newWk(){return{schedule:DS.map(function(d){return{day:d.day,type:d.type};}),done:{},habits:{}};}
-function sS(ns){S=Object.assign({},S,ns);fbWrite(S);render();}
+function sS(ns){S=Object.assign({},S,ns);try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}fbWrite(S);render();}
 function sU(nu){U=Object.assign({},U,nu);render();}
 
 function cw(){
@@ -123,6 +123,7 @@ document.addEventListener('click',function(e){
 
 function render(){
   var r=document.getElementById('root');
+  try{
   if(!U.synced){r.innerHTML='<div style="min-height:100vh;background:linear-gradient(160deg,#1a4a32,#2D6A4F);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px"><div style="font-size:52px">🏃‍♂️🏃‍♀️</div><div style="color:rgba(255,255,255,0.8);font-family:sans-serif;font-size:16px">Syncing your plan…</div></div>';return;}
   if(!S.startDate){
     r.innerHTML=rSetup();
@@ -139,6 +140,7 @@ function render(){
   var tot=0;for(var i=1;i<=8;i++){var w2=S.weeks[i]||newWk();tot+=w2.schedule.filter(function(d){return d.type!=='rest'&&d.type!=='walk'&&w2.done&&w2.done['s-'+d.day];}).length;}
   var ph=Math.min(Math.floor((actW-1)/2),3),dt=wkDates(actW),td=tds();
   r.innerHTML=rPicker()+rMain(actW,clW,isCW,isPW,sc,dm,td,wdy,wdn,tot,ph,dt);
+  }catch(e){r.innerHTML='<div style="padding:20px;font-family:sans-serif;color:red"><b>Error:</b> '+e.message+'</div>';}
 }
 
 function rSetup(){
@@ -215,7 +217,7 @@ function rWO(){
 
 function init(){
   // Load from localStorage immediately so app always opens
-  try{var l=localStorage.getItem(SK);if(l)S=JSON.parse(l);}catch(x){}
+  try{var l=localStorage.getItem(SK);if(l)S=Object.assign({},S,JSON.parse(l));}catch(x){}
   U.synced=true;
   render();
   // Then sync with Firebase in background (skipped on file://)
@@ -225,7 +227,11 @@ function init(){
     es.addEventListener('put',function(e){
       var p=JSON.parse(e.data),val=p.data;
       if(val===null){if(S.startDate)fbWrite(S);}
-      else{S=val||{startDate:null,weeks:{}};render();}
+      else{
+      var inc=val||{startDate:null,weeks:{}};
+      if(!inc.startDate&&S.startDate)inc.startDate=S.startDate;
+      S=inc;render();
+    }
     });
     es.onerror=function(){es.close();};
   }catch(x){}
