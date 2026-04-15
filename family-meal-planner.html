@@ -705,7 +705,7 @@ function sendChat(msg){
   var recipeList=RECIPES.map(function(r){return'- '+r.name+' (id: "'+r.id+'")';}).join('\n');
   var sysPrompt='You are an AI cooking assistant in a family meal planner app for two parents doing 16:8 intermittent fasting, a 3-year-old, and a 1-year-old. You manage the recipe library.\n\nCurrent recipes:\n'+recipeList+'\n\nMethods: grill, blackstone, oven, stovetop, slowcooker\nGrocery sections: meat, produce, dairy, pantry, bread, frozen\n\nWhen the user asks to add, update, or remove a recipe, respond conversationally AND end your message with a JSON block:\n\nAdd: ```json\n{"action":"add_recipe","recipe":{"id":"kebab-case-id","emoji":"🍗","name":"Name","method":"stovetop","time":25,"cost":"$12&ndash;15","cals":450,"desc":"Short description.","kidsNote":"Note for 1yo and 3yo.","groceryItems":[{"name":"Ingredient, amount","section":"meat"}],"steps":["Step 1","Step 2"]}}\n```\n\nUpdate: ```json\n{"action":"update_recipe","id":"existing-id","updates":{"name":"New Name","desc":"New desc"}}\n```\n\nRemove: ```json\n{"action":"remove_recipe","id":"existing-id"}\n```\n\nFor general questions, respond without JSON. Be concise and friendly. Use &ndash; in cost strings (e.g. "$12&ndash;15").';
   var geminiMsgs=msgs.map(function(m){return{role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]};});
-  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+apiKey,{
+  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key='+apiKey,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({system_instruction:{parts:[{text:sysPrompt}]},contents:geminiMsgs})
