@@ -705,28 +705,38 @@ function sendChat(msg){
   var recipeList=RECIPES.map(function(r){return'- '+r.name+' (id: "'+r.id+'")';}).join('\n');
   var sysPrompt='You are an AI cooking assistant in a family meal planner app for two parents doing 16:8 intermittent fasting, a 3-year-old, and a 1-year-old. You manage the recipe library.\n\nCurrent recipes:\n'+recipeList+'\n\nMethods: grill, blackstone, oven, stovetop, slowcooker\nGrocery sections: meat, produce, dairy, pantry, bread, frozen\n\nWhen the user asks to add, update, or remove a recipe, respond conversationally AND end your message with a JSON block:\n\nAdd: ```json\n{"action":"add_recipe","recipe":{"id":"kebab-case-id","emoji":"🍗","name":"Name","method":"stovetop","time":25,"cost":"$12&ndash;15","cals":450,"desc":"Short description.","kidsNote":"Note for 1yo and 3yo.","groceryItems":[{"name":"Ingredient, amount","section":"meat"}],"steps":["Step 1","Step 2"]}}\n```\n\nUpdate: ```json\n{"action":"update_recipe","id":"existing-id","updates":{"name":"New Name","desc":"New desc"}}\n```\n\nRemove: ```json\n{"action":"remove_recipe","id":"existing-id"}\n```\n\nFor general questions, respond without JSON. Be concise and friendly. Use &ndash; in cost strings (e.g. "$12&ndash;15").';
   var geminiMsgs=msgs.map(function(m){return{role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]};});
-  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key='+apiKey,{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({system_instruction:{parts:[{text:sysPrompt}]},contents:geminiMsgs})
-  }).then(function(resp){
-    if(!resp.ok)return resp.json().then(function(e){throw new Error('Error '+resp.status+': '+(e&&e.error&&e.error.message||resp.statusText));});
-    return resp.json();
-  }).then(function(data){
-    if(data.error)throw new Error(data.error.message||'API error');
-    var text=(data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text)||'Sorry, no response.';
-    var actionMatch=text.match(/```json\n?([\s\S]*?)\n?```/);
-    var cleanText=text.replace(/```json[\s\S]*?```/g,'').trim();
-    if(actionMatch){try{RECIPES=getRecipes();applyAiAction(JSON.parse(actionMatch[1]));}catch(ex){}}
-    var newMsgs=msgs.concat([{role:'assistant',content:cleanText}]);
-    sU({chatMsgs:newMsgs,chatLoading:false});
-    setTimeout(function(){var cm=document.getElementById('chat-msgs');if(cm)cm.scrollTop=cm.scrollHeight;},50);
-  }).catch(function(err){
-    var errMsg=err.message||'Unknown error';
-    if(errMsg.indexOf('Failed to fetch')>-1)errMsg='Network error — make sure you\'re online and your API key starts with "AIza". If testing locally, try opening the file via a web server or GitHub Pages.';
-    var newMsgs=msgs.concat([{role:'assistant',content:'⚠️ '+errMsg}]);
-    sU({chatMsgs:newMsgs,chatLoading:false});
-  });
+  var modelNames=['gemini-2.0-flash-lite','gemini-2.0-flash','gemini-1.5-flash-002','gemini-1.5-flash-001','gemini-1.0-pro'];
+  function tryModel(i){
+    if(i>=modelNames.length){
+      var newMsgs=msgs.concat([{role:'assistant',content:'⚠️ No supported Gemini model found on your account. Try going to aistudio.google.com → API keys and making sure your key has access to Gemini models.'}]);
+      sU({chatMsgs:newMsgs,chatLoading:false});return;
+    }
+    fetch('https://generativelanguage.googleapis.com/v1beta/models/'+modelNames[i]+':generateContent?key='+apiKey,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({system_instruction:{parts:[{text:sysPrompt}]},contents:geminiMsgs})
+    }).then(function(resp){
+      if(resp.status===404){tryModel(i+1);return null;}
+      if(!resp.ok)return resp.json().then(function(e){throw new Error('Error '+resp.status+': '+(e&&e.error&&e.error.message||resp.statusText));});
+      return resp.json();
+    }).then(function(data){
+      if(!data)return;
+      if(data.error)throw new Error(data.error.message||'API error');
+      var text=(data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text)||'Sorry, no response.';
+      var actionMatch=text.match(/```json\n?([\s\S]*?)\n?```/);
+      var cleanText=text.replace(/```json[\s\S]*?```/g,'').trim();
+      if(actionMatch){try{RECIPES=getRecipes();applyAiAction(JSON.parse(actionMatch[1]));}catch(ex){}}
+      var newMsgs=msgs.concat([{role:'assistant',content:cleanText}]);
+      sU({chatMsgs:newMsgs,chatLoading:false});
+      setTimeout(function(){var cm=document.getElementById('chat-msgs');if(cm)cm.scrollTop=cm.scrollHeight;},50);
+    }).catch(function(err){
+      var errMsg=err.message||'Unknown error';
+      if(errMsg.indexOf('Failed to fetch')>-1)errMsg='Network error — make sure you\'re online. If testing locally, open via a web server or GitHub Pages.';
+      var newMsgs=msgs.concat([{role:'assistant',content:'⚠️ '+errMsg}]);
+      sU({chatMsgs:newMsgs,chatLoading:false});
+    });
+  }
+  tryModel(0);
 }
 
 var DAYS=['Monday','Tuesday','Wednesday','Thursday'];
