@@ -57,7 +57,7 @@ var SECTS=[
   {id:"frozen",label:"❄️ Frozen",bg:"#E0F2FE"},
 ];
 
-var RECIPES=[
+var BUILTIN_RECIPES=[
   {id:"hamburger-helper",emoji:"🍝",name:"One Pot Hamburger Helper",method:"stovetop",time:30,cost:"$12&ndash;15",cals:510,
    desc:"Homemade hamburger helper &mdash; ground beef and elbow noodles simmered in seasoned beef broth, finished with cream and cheddar.",
    kidsNote:"Kids love this &mdash; pasta is soft enough for the 1yo. Serve their portion before stirring in all the seasoning if preferred.",
@@ -668,11 +668,72 @@ var RECIPES=[
    ]},
 ];
 
+var RECIPES=BUILTIN_RECIPES;
+function getRecipes(){
+  var removed=S&&S.removedIds||[];
+  var custom=S&&S.customRecipes||[];
+  var customIds=custom.map(function(r){return r.id;});
+  var base=BUILTIN_RECIPES.filter(function(r){return removed.indexOf(r.id)<0&&customIds.indexOf(r.id)<0;});
+  return base.concat(custom);
+}
+function applyAiAction(action){
+  if(!action||!action.action)return;
+  if(action.action==='add_recipe'){
+    var r=action.recipe;if(!r||!r.id||!r.name)return;
+    var nc=(S.customRecipes||[]).filter(function(x){return x.id!==r.id;}).concat([r]);
+    sS({customRecipes:nc,groceryBuilt:false});
+  } else if(action.action==='update_recipe'){
+    var id=action.id;if(!id)return;
+    var existing=RECIPES.find(function(r){return r.id===id;});if(!existing)return;
+    var updated=Object.assign({},existing,action.updates||{});
+    var nc2=(S.customRecipes||[]).filter(function(x){return x.id!==id;}).concat([updated]);
+    sS({customRecipes:nc2,groceryBuilt:false});
+  } else if(action.action==='remove_recipe'){
+    var rid=action.id;if(!rid)return;
+    var nr=(S.removedIds||[]).filter(function(x){return x!==rid;}).concat([rid]);
+    var np=Object.assign({},S.plan);
+    Object.keys(np).forEach(function(k){if(np[k]===rid)delete np[k];});
+    var nc3=(S.customRecipes||[]).filter(function(x){return x.id!==rid;});
+    sS({removedIds:nr,plan:np,customRecipes:nc3,groceryBuilt:false});
+  }
+}
+function sendChat(msg){
+  RECIPES=getRecipes();
+  var msgs=U.chatMsgs.concat([{role:'user',content:msg}]);
+  sU({chatMsgs:msgs,chatLoading:true});
+  var apiKey=localStorage.getItem('mp_gk')||'';
+  var recipeList=RECIPES.map(function(r){return'- '+r.name+' (id: "'+r.id+'")';}).join('\n');
+  var sysPrompt='You are an AI cooking assistant in a family meal planner app for two parents doing 16:8 intermittent fasting, a 3-year-old, and a 1-year-old. You manage the recipe library.\n\nCurrent recipes:\n'+recipeList+'\n\nMethods: grill, blackstone, oven, stovetop, slowcooker\nGrocery sections: meat, produce, dairy, pantry, bread, frozen\n\nWhen the user asks to add, update, or remove a recipe, respond conversationally AND end your message with a JSON block:\n\nAdd: ```json\n{"action":"add_recipe","recipe":{"id":"kebab-case-id","emoji":"🍗","name":"Name","method":"stovetop","time":25,"cost":"$12&ndash;15","cals":450,"desc":"Short description.","kidsNote":"Note for 1yo and 3yo.","groceryItems":[{"name":"Ingredient, amount","section":"meat"}],"steps":["Step 1","Step 2"]}}\n```\n\nUpdate: ```json\n{"action":"update_recipe","id":"existing-id","updates":{"name":"New Name","desc":"New desc"}}\n```\n\nRemove: ```json\n{"action":"remove_recipe","id":"existing-id"}\n```\n\nFor general questions, respond without JSON. Be concise and friendly. Use &ndash; in cost strings (e.g. "$12&ndash;15").';
+  var geminiMsgs=msgs.map(function(m){return{role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]};});
+  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+apiKey,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({system_instruction:{parts:[{text:sysPrompt}]},contents:geminiMsgs})
+  }).then(function(resp){
+    if(!resp.ok)return resp.json().then(function(e){throw new Error('Error '+resp.status+': '+(e&&e.error&&e.error.message||resp.statusText));});
+    return resp.json();
+  }).then(function(data){
+    if(data.error)throw new Error(data.error.message||'API error');
+    var text=(data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text)||'Sorry, no response.';
+    var actionMatch=text.match(/```json\n?([\s\S]*?)\n?```/);
+    var cleanText=text.replace(/```json[\s\S]*?```/g,'').trim();
+    if(actionMatch){try{RECIPES=getRecipes();applyAiAction(JSON.parse(actionMatch[1]));}catch(ex){}}
+    var newMsgs=msgs.concat([{role:'assistant',content:cleanText}]);
+    sU({chatMsgs:newMsgs,chatLoading:false});
+    setTimeout(function(){var cm=document.getElementById('chat-msgs');if(cm)cm.scrollTop=cm.scrollHeight;},50);
+  }).catch(function(err){
+    var errMsg=err.message||'Unknown error';
+    if(errMsg.indexOf('Failed to fetch')>-1)errMsg='Network error — make sure you\'re online and your API key starts with "AIza". If testing locally, try opening the file via a web server or GitHub Pages.';
+    var newMsgs=msgs.concat([{role:'assistant',content:'⚠️ '+errMsg}]);
+    sU({chatMsgs:newMsgs,chatLoading:false});
+  });
+}
+
 var DAYS=['Monday','Tuesday','Wednesday','Thursday'];
-var EMPTY={plan:{},checked:{},custom:[],autoItems:[],groceryBuilt:false,history:{},treats:{}};
+var EMPTY={plan:{},checked:{},custom:[],autoItems:[],groceryBuilt:false,history:{},treats:{},customRecipes:[],removedIds:[]};
 
 var S=Object.assign({},EMPTY);
-var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',confirmReset:false,synced:false};
+var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',confirmReset:false,synced:false,chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null};
 
 function fbWrite(d){fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}
 function gM(t){return METHODS[t]||METHODS.stovetop;}
@@ -736,28 +797,62 @@ document.addEventListener('click',function(e){
     inp.value='';sS({custom:nc2});
   }
   else if(a==='remove-custom'){sS({custom:S.custom.filter(function(c){return c.id!==p;})});}
+  else if(a==='toggle-treat'){
+    var nt=Object.assign({},S.treats||{});nt[p]=!nt[p];sS({treats:nt});
+  }
   else if(a==='new-week-ask'){sU({confirmReset:true});}
   else if(a==='new-week-no'){sU({confirmReset:false});}
   else if(a==='new-week-yes'){
     var today=new Date().toISOString().split('T')[0];
     var nh=Object.assign({},S.history||{});
     Object.values(S.plan).forEach(function(id){nh[id]=today;});
-    sS(Object.assign({},EMPTY,{history:nh}));sU({confirmReset:false,tab:0});
+    sS(Object.assign({},EMPTY,{history:nh,customRecipes:S.customRecipes||[],removedIds:S.removedIds||[]}));sU({confirmReset:false,tab:0});
+  }
+  else if(a==='open-chat'){sU({chatOpen:true});}
+  else if(a==='close-chat'){sU({chatOpen:false});}
+  else if(a==='clear-chat'){sU({chatMsgs:[]});}
+  else if(a==='reset-api-key'){localStorage.removeItem('mp_gk');render();}
+  else if(a==='save-api-key'){
+    var kInp=document.getElementById('ai-key-input');
+    if(kInp&&kInp.value.trim()){localStorage.setItem('mp_gk',kInp.value.trim());render();}
+  }
+  else if(a==='send-chat'){
+    var ci2=document.getElementById('chat-input');
+    if(ci2&&ci2.value.trim()&&!U.chatLoading){var cm2=ci2.value.trim();ci2.value='';sendChat(cm2);}
+  }
+  else if(a==='delete-recipe'){sU({confirmDeleteId:p,viewRecipe:U.viewRecipe});}
+  else if(a==='delete-recipe-cancel'){sU({confirmDeleteId:null});}
+  else if(a==='delete-recipe-confirm'){
+    var drid=p;
+    var dnr=(S.removedIds||[]).filter(function(x){return x!==drid;}).concat([drid]);
+    var dnp=Object.assign({},S.plan);Object.keys(dnp).forEach(function(k){if(dnp[k]===drid)delete dnp[k];});
+    var dnc=(S.customRecipes||[]).filter(function(x){return x.id!==drid;});
+    sS({removedIds:dnr,plan:dnp,customRecipes:dnc,groceryBuilt:false});
+    sU({confirmDeleteId:null,viewRecipe:null});
+  }
+});
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&U.chatOpen&&!U.chatLoading){
+    var ci=document.getElementById('chat-input');
+    if(ci&&document.activeElement===ci&&ci.value.trim()){var m=ci.value.trim();ci.value='';sendChat(m);}
   }
 });
 
 function render(){
+  RECIPES=getRecipes();
   var r=document.getElementById('root');
   if(!U.synced){r.innerHTML='<div style="min-height:100vh;background:linear-gradient(160deg,#78350F,#B45309);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px"><div style="font-size:52px">🍽️</div><div style="color:rgba(255,255,255,0.8);font-family:sans-serif;font-size:16px">Syncing your meal plan…</div></div>';return;}
-  var modals=(U.viewRecipe?rRecipeModal():'')+(U.pickingDay!==null?rPickerModal():'');
+  var modals=(U.viewRecipe?rRecipeModal():'')+(U.pickingDay!==null?rPickerModal():'')+rChat();
   r.innerHTML=modals+rApp();
 }
 
 function rApp(){
-  var tabs=['🗓️ Plan','🛒 Grocery','📖 Recipes'];
+  var tabs=['🗓️ Plan','🛒 Grocery','📖 Recipes','👪 Family'];
   var tabBar='<div class="sx" style="background:#fff;border-bottom:2px solid #E5E7EB;padding:0 8px;display:flex">'+tabs.map(function(t,i){var a=(U.tab===i);return'<button data-a="tab" data-p="'+i+'" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:600;white-space:nowrap;color:'+(a?'#B45309':'#6B7280')+';border-bottom:'+(a?'3px solid #B45309':'3px solid transparent')+'">'+t+'</button>';}).join('')+'</div>';
-  var content=(U.tab===0?rPlan():'')+(U.tab===1?rGrocery():'')+(U.tab===2?rRecipes():'');
-  return'<div style="background:#FFFBF5;min-height:100vh">'+rHeader()+tabBar+'<div style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>';
+  var content=(U.tab===0?rPlan():'')+(U.tab===1?rGrocery():'')+(U.tab===2?rRecipes():'')+(U.tab===3?rFamily():'');
+  var floatingBtn='<button data-a="open-chat" style="position:fixed;bottom:calc(var(--safe-bot) + 22px);right:18px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#B45309,#78350F);color:#fff;border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(120,53,15,0.45);z-index:500">🤖</button>';
+  return'<div style="background:#FFFBF5;min-height:100vh">'+rHeader()+tabBar+'<div style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>'+floatingBtn;
 }
 
 function rHeader(){
@@ -826,7 +921,10 @@ function rRecipeModal(){
     var taken=(S.plan[i]&&!isThisDay);
     return'<button '+(isThisDay?'data-a="remove-meal" data-p="'+i+'"':(!taken?'data-a="modal-add-day" data-p="'+i+'" data-q="'+r.id+'"':''))+' style="padding:6px 14px;border-radius:20px;border:1.5px solid '+(isThisDay?'#B45309':'#E5E7EB')+';background:'+(isThisDay?'#B45309':taken?'#F9FAFB':'#fff')+';color:'+(isThisDay?'#fff':taken?'#D1D5DB':'#1A1A1A')+';cursor:'+(taken?'default':'pointer')+';font-family:sans-serif;font-size:13px;font-weight:600">'+day+'</button>';
   }).join('');
-  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-end"><div class="slide-up sy" style="background:#FFFBF5;border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 20px)"><div style="background:linear-gradient(135deg,#B45309,#78350F);padding:20px 20px 22px;border-radius:24px 24px 0 0;position:sticky;top:0"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="font-size:42px">'+r.emoji+'</div><button data-a="close-recipe" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div><div style="color:#fff;font-weight:700;font-size:20px;margin-top:8px;line-height:1.3">'+r.name+'</div><div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">~'+r.cals+' cal</span>'+(r.venison?'<span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">🦌 Venison</span>':'')+(r.kidsNote?'<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;margin-top:8px;font-family:sans-serif;font-size:12px;color:rgba(255,255,255,0.9);width:100%">👶 '+r.kidsNote+'</div>':'')+'</div><div style="margin-top:12px"><div style="color:rgba(255,255,255,0.7);font-family:sans-serif;font-size:11px;margin-bottom:6px">Add to week:</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+days+'</div></div></div><div style="padding:18px 18px 0"><p style="font-family:sans-serif;font-size:14px;color:#6B7280;line-height:1.65;margin-bottom:20px">'+r.desc+'</p><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Ingredients</div>'+r.groceryItems.map(function(it){return'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #E5E7EB"><div style="width:7px;height:7px;border-radius:50%;background:#B45309;flex-shrink:0"></div><div style="font-family:sans-serif;font-size:14px;color:#1A1A1A">'+it.name+'</div></div>';}).join('')+'<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px">Instructions</div>'+r.steps.map(function(step,i){return'<div style="display:flex;gap:12px;padding:12px 0;border-bottom:'+(i<r.steps.length-1?'1px solid #E5E7EB':'none')+'"><div style="width:26px;height:26px;border-radius:50%;background:#FFF7ED;color:#B45309;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:sans-serif;flex-shrink:0;margin-top:2px">'+(i+1)+'</div><div style="font-family:sans-serif;font-size:14px;color:#374151;line-height:1.6">'+step+'</div></div>';}).join('')+'</div></div></div>';
+  var deleteHtml=U.confirmDeleteId===r.id?
+    '<div style="background:#FEE2E2;border-radius:12px;padding:14px;margin:16px 18px 0;text-align:center"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#991B1B;margin-bottom:6px">Delete this recipe?</div><div style="font-family:sans-serif;font-size:12px;color:#7F1D1D;margin-bottom:12px">It will be removed from your library and any planned meals.</div><div style="display:flex;gap:8px"><button data-a="delete-recipe-cancel" style="flex:1;padding:10px;background:#fff;border:1.5px solid #FCA5A5;border-radius:10px;font-family:sans-serif;font-size:14px;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button><button data-a="delete-recipe-confirm" data-p="'+r.id+'" style="flex:1;padding:10px;background:#DC2626;color:#fff;border:none;border-radius:10px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer">Delete</button></div></div>':
+    '<div style="padding:12px 18px 0;text-align:right"><button data-a="delete-recipe" data-p="'+r.id+'" style="background:none;border:none;color:#9CA3AF;font-family:sans-serif;font-size:12px;cursor:pointer;text-decoration:underline">🗑️ Remove recipe</button></div>';
+  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-end"><div class="slide-up sy" style="background:#FFFBF5;border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 20px)"><div style="background:linear-gradient(135deg,#B45309,#78350F);padding:20px 20px 22px;border-radius:24px 24px 0 0;position:sticky;top:0"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="font-size:42px">'+r.emoji+'</div><button data-a="close-recipe" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div><div style="color:#fff;font-weight:700;font-size:20px;margin-top:8px;line-height:1.3">'+r.name+'</div><div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">~'+r.cals+' cal</span>'+(r.venison?'<span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">🦌 Venison</span>':'')+(r.kidsNote?'<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;margin-top:8px;font-family:sans-serif;font-size:12px;color:rgba(255,255,255,0.9);width:100%">👶 '+r.kidsNote+'</div>':'')+'</div><div style="margin-top:12px"><div style="color:rgba(255,255,255,0.7);font-family:sans-serif;font-size:11px;margin-bottom:6px">Add to week:</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+days+'</div></div></div>'+deleteHtml+'<div style="padding:18px 18px 0"><p style="font-family:sans-serif;font-size:14px;color:#6B7280;line-height:1.65;margin-bottom:20px">'+r.desc+'</p><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Ingredients</div>'+r.groceryItems.map(function(it){return'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #E5E7EB"><div style="width:7px;height:7px;border-radius:50%;background:#B45309;flex-shrink:0"></div><div style="font-family:sans-serif;font-size:14px;color:#1A1A1A">'+it.name+'</div></div>';}).join('')+'<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px">Instructions</div>'+r.steps.map(function(step,i){return'<div style="display:flex;gap:12px;padding:12px 0;border-bottom:'+(i<r.steps.length-1?'1px solid #E5E7EB':'none')+'"><div style="width:26px;height:26px;border-radius:50%;background:#FFF7ED;color:#B45309;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:sans-serif;flex-shrink:0;margin-top:2px">'+(i+1)+'</div><div style="font-family:sans-serif;font-size:14px;color:#374151;line-height:1.6">'+step+'</div></div>';}).join('')+'</div></div></div>';
 }
 
 function rPickerModal(){
@@ -839,6 +937,162 @@ function rPickerModal(){
     return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';
   }).join('');
   return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-end"><div class="slide-up" style="background:#FFFBF5;border-radius:22px 22px 0 0;width:100%;max-height:88vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)"><div style="background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 0;flex-shrink:0"><div style="display:flex;justify-content:center;margin-bottom:10px"><div style="width:40px;height:4px;border-radius:2px;background:#D1D5DB"></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">Pick dinner for '+day+'</div><button data-a="close-pick" style="background:none;border:none;cursor:pointer;font-family:sans-serif;color:#6B7280;font-size:15px;font-weight:600">Cancel</button></div>'+filters+'</div><div class="sy" style="flex:1;padding:8px 16px 16px;overflow-y:auto">'+cards+'</div></div></div>';
+}
+
+function rChat(){
+  if(!U.chatOpen)return'';
+  var apiKey=localStorage.getItem('mp_gk')||'';
+  if(!apiKey){
+    return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px">'+
+      '<div style="background:#fff;border-radius:20px;padding:24px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">'+
+        '<div style="font-size:32px;text-align:center;margin-bottom:10px">🤖</div>'+
+        '<div style="font-family:sans-serif;font-weight:800;font-size:18px;color:#1A1A1A;margin-bottom:6px;text-align:center">Connect AI Assistant</div>'+
+        '<div style="font-family:sans-serif;font-size:13px;color:#6B7280;margin-bottom:18px;line-height:1.65;text-align:center">Enter your free Google Gemini API key to add, update, and remove recipes with AI. Get one free at <strong style="color:#B45309">aistudio.google.com</strong> — no credit card needed.<br><br>Your key is saved only on this device.</div>'+
+        '<input id="ai-key-input" type="password" placeholder="AIza…" style="width:100%;padding:12px 14px;border-radius:10px;border:2px solid #E5E7EB;font-family:sans-serif;font-size:14px;margin-bottom:12px;outline:none;background:#F9F6F1"/>'+
+        '<div style="display:flex;gap:8px">'+
+          '<button data-a="close-chat" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-family:sans-serif;font-size:14px;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>'+
+          '<button data-a="save-api-key" style="flex:1;padding:12px;background:linear-gradient(135deg,#B45309,#78350F);color:#fff;border:none;border-radius:10px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer">Save & Connect</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+  var msgs=U.chatMsgs;
+  var msgsHtml=msgs.length===0&&!U.chatLoading?
+    '<div style="text-align:center;padding:36px 20px;color:#9CA3AF;font-family:sans-serif">'+
+      '<div style="font-size:36px;margin-bottom:10px">🤖</div>'+
+      '<div style="font-weight:700;font-size:15px;color:#1A1A1A;margin-bottom:8px">AI Recipe Assistant</div>'+
+      '<div style="font-size:13px;line-height:1.7;color:#6B7280">Try saying:<br>"Add a taco soup recipe"<br>"Make the pizza recipe use sourdough crust"<br>"Remove the pasta primavera"<br>"What\'s a good Blackstone recipe?"</div>'+
+    '</div>':
+    msgs.map(function(m){
+      var isU=(m.role==='user');
+      return'<div style="display:flex;justify-content:'+(isU?'flex-end':'flex-start')+';margin-bottom:10px">'+
+        '<div style="max-width:82%;padding:10px 13px;border-radius:'+(isU?'16px 16px 4px 16px':'16px 16px 16px 4px')+';background:'+(isU?'linear-gradient(135deg,#B45309,#78350F)':'#F3F4F6')+';color:'+(isU?'#fff':'#1A1A1A')+';font-family:sans-serif;font-size:14px;line-height:1.55;white-space:pre-wrap">'+m.content+'</div>'+
+      '</div>';
+    }).join('');
+  if(U.chatLoading)msgsHtml+='<div style="display:flex;justify-content:flex-start;margin-bottom:10px"><div style="padding:10px 14px;border-radius:16px 16px 16px 4px;background:#F3F4F6;font-family:sans-serif;font-size:13px;color:#6B7280">Thinking…&nbsp;&nbsp;⏳</div></div>';
+  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:3000;display:flex;align-items:flex-end">'+
+    '<div class="slide-up" style="background:#FFFBF5;border-radius:22px 22px 0 0;width:100%;height:80vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)">'+
+      '<div style="padding:14px 16px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#fff;border-radius:22px 22px 0 0">'+
+        '<div>'+
+          '<div style="font-family:sans-serif;font-weight:800;font-size:15px;color:#1A1A1A">🤖 AI Recipe Assistant</div>'+
+          '<div style="font-family:sans-serif;font-size:11px;color:#9CA3AF;margin-top:1px">Add · Update · Remove recipes</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px;align-items:center">'+
+          (msgs.length?'<button data-a="clear-chat" style="background:none;border:none;cursor:pointer;font-family:sans-serif;font-size:12px;color:#9CA3AF;padding:4px 8px">Clear</button>':'')+
+          '<button data-a="reset-api-key" style="background:none;border:none;cursor:pointer;font-family:sans-serif;font-size:12px;color:#9CA3AF;padding:4px 8px">🔑</button>'+
+          '<button data-a="close-chat" style="width:30px;height:30px;border-radius:50%;background:#F3F4F6;border:none;cursor:pointer;font-size:15px;color:#6B7280;display:flex;align-items:center;justify-content:center">✕</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="chat-msgs" class="sy" style="flex:1;padding:14px 14px 8px;overflow-y:auto">'+msgsHtml+'</div>'+
+      '<div style="padding:10px 12px 12px;border-top:1px solid #E5E7EB;display:flex;gap:8px;flex-shrink:0;background:#fff">'+
+        '<input id="chat-input" type="text" placeholder="Add, update, or remove a recipe…" '+(U.chatLoading?'disabled':'')+' style="flex:1;padding:10px 14px;border-radius:22px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:14px;outline:none;background:'+(U.chatLoading?'#F9FAFB':'#fff')+'"/>'+
+        '<button data-a="send-chat" '+(U.chatLoading?'disabled':'')+' style="width:42px;height:42px;border-radius:50%;background:'+(U.chatLoading?'#E5E7EB':'linear-gradient(135deg,#B45309,#78350F)')+';border:none;color:#fff;font-size:16px;cursor:'+(U.chatLoading?'default':'pointer')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">➤</button>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function rFamily(){
+  var sched=[
+    {time:'6:00 AM',icon:'&#x2600;&#xFE0F;',label:'Wake up',note:'',type:'base'},
+    {time:'6:30 AM',icon:'&#x2615;',label:"Matthew's Coffee #1",note:'Black only &mdash; zero calories, 100% IF approved',type:'coffee'},
+    {time:'7:00 AM',icon:'&#x1F467;',label:"Kids' breakfast",note:'You fast, they eat &mdash; eggs, oatmeal, yogurt',type:'kids'},
+    {time:'10:00 AM',icon:'&#x2615;',label:"Matthew's Coffee #2",note:'Still black until noon. Caffeine helps suppress hunger.',type:'coffee'},
+    {time:'NOON',icon:'',label:'EATING WINDOW OPENS',note:'',type:'divider'},
+    {time:'12:00 PM',icon:'&#x1F37D;&#xFE0F;',label:'Break your fast',note:'Protein first &mdash; chicken, eggs, steak, or cheese before any carbs',type:'eat'},
+    {time:'3:00 PM',icon:'&#x1F34E;',label:'Snack (optional)',note:'Apple + peanut butter or string cheese',type:'eat'},
+    {time:'5:30 PM',icon:'&#x1F3C3;',label:'Workout',note:'2.3 mi stroller run or 15-min home circuit',type:'workout'},
+    {time:'7:00 PM',icon:'&#x1F37D;&#xFE0F;',label:'Family dinner',note:'Your planned meal &mdash; everyone eats together',type:'eat'},
+    {time:'7:30 PM',icon:'&#x1F36B;',label:"Wife's earned treat!",note:'1 scoop chocolate ice cream &mdash; workout days only &#x1F389;',type:'treat'},
+    {time:'8:00 PM',icon:'',label:'EATING WINDOW CLOSES',note:'',type:'divider'},
+  ];
+  var schedHtml=sched.map(function(item){
+    if(item.type==='divider')return'<div style="display:flex;align-items:center;gap:8px;margin:10px 0"><div style="height:1px;flex:1;background:rgba(255,255,255,0.2)"></div><div style="font-family:sans-serif;font-size:9px;font-weight:800;color:rgba(255,255,255,0.65);letter-spacing:1.5px">'+item.label+' &mdash; '+item.time+'</div><div style="height:1px;flex:1;background:rgba(255,255,255,0.2)"></div></div>';
+    var lc=item.type==='treat'?'#F9A8D4':item.type==='workout'?'#FCD34D':item.type==='coffee'?'#FDE68A':'#fff';
+    return'<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.07)"><div style="width:56px;font-family:sans-serif;font-size:10px;color:rgba(255,255,255,0.45);flex-shrink:0;padding-top:2px">'+item.time+'</div><div style="width:20px;text-align:center;font-size:15px;flex-shrink:0">'+item.icon+'</div><div style="flex:1"><div style="font-family:sans-serif;font-size:13px;font-weight:700;color:'+lc+'">'+item.label+'</div>'+(item.note?'<div style="font-family:sans-serif;font-size:11px;color:rgba(255,255,255,0.5);margin-top:1px">'+item.note+'</div>':'')+'</div></div>';
+  }).join('');
+
+  var coffeeItems=[
+    {label:'Coffee #1 &mdash; 6:30 AM',note:'Drink it black while getting the kids ready. Coffee + fasting = peak fat-burning conditions.'},
+    {label:'Coffee #2 &mdash; 10:00 AM',note:'Keep it black until noon. Once you break your fast at 12 PM, you can add a splash of cream if you want.'},
+    {label:'Avoid before noon',note:'Lattes, mochas, or anything with cream/milk/sugar &mdash; these spike insulin and break your fast.'},
+  ];
+  var coffeeHtml=coffeeItems.map(function(c,i){
+    return'<div style="padding:10px 0;border-bottom:'+(i<coffeeItems.length-1?'1px solid #FDE68A':'none')+'"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#92400E">'+c.label+'</div><div style="font-family:sans-serif;font-size:12px;color:#78350F;margin-top:3px;line-height:1.55">'+c.note+'</div></div>';
+  }).join('');
+
+  var iceCreamItems=[
+    {icon:'&#x2705;',label:'Workout days &mdash; earn it',note:'1 scoop at 7:30 PM. Inside your eating window, earned, and guilt-free.'},
+    {icon:'&#x1F4A1;',label:'Make it premium',note:'One really good scoop of quality chocolate ice cream is more satisfying than a whole cheap pint.'},
+    {icon:'&#x1F36B;',label:'Non-workout days',note:'A few squares of dark chocolate (~80 cal) satisfies the craving without the full treat.'},
+  ];
+  var iceCreamHtml=iceCreamItems.map(function(c,i){
+    return'<div style="display:flex;gap:12px;padding:9px 0;border-bottom:'+(i<iceCreamItems.length-1?'1px solid #F0ABFC':'none')+'"><div style="font-size:18px;flex-shrink:0">'+c.icon+'</div><div><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#86198F">'+c.label+'</div><div style="font-family:sans-serif;font-size:12px;color:#701A75;margin-top:2px;line-height:1.5">'+c.note+'</div></div></div>';
+  }).join('');
+
+  var treatDays=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var treatsHtml=treatDays.map(function(day){
+    var earned=S.treats&&S.treats[day];
+    return'<button data-a="toggle-treat" data-p="'+day+'" style="flex:1;padding:8px 2px;border-radius:10px;border:2px solid '+(earned?'#C026D3':'#E879F9')+';background:'+(earned?'#F0ABFC':'#fff')+';cursor:pointer;text-align:center"><div style="font-size:'+(earned?16:13)+'px;line-height:1">'+(earned?'&#x1F36B;':'&middot;')+'</div><div style="font-family:sans-serif;font-size:9px;font-weight:700;color:'+(earned?'#86198F':'#C084FC')+';margin-top:3px">'+day+'</div></button>';
+  }).join('');
+  var treatCount=Object.values(S.treats||{}).filter(Boolean).length;
+
+  var kidsItems=[
+    {emoji:'&#x1F373;',name:'Scrambled Eggs &amp; Toast',note:'5 min. Works for both.'},
+    {emoji:'&#x1F963;',name:'Oatmeal with Banana',note:'Mash banana for the 1yo.'},
+    {emoji:'&#x1FAD0;',name:'Greek Yogurt &amp; Berries',note:'Cut berries in half for 1yo.'},
+    {emoji:'&#x1F34C;',name:'Banana &amp; Peanut Butter Toast',note:'Fine for 1yo if no nut allergy.'},
+    {emoji:'&#x1F95B;',name:'Cheerios &amp; Whole Milk',note:'Great self-feeding practice for 1yo.'},
+  ];
+  var kidsHtml=kidsItems.map(function(m){
+    return'<div style="display:flex;gap:10px;background:rgba(255,255,255,0.55);border-radius:10px;padding:9px 12px;margin-bottom:6px"><div style="font-size:20px;flex-shrink:0">'+m.emoji+'</div><div><div style="font-family:sans-serif;font-weight:600;font-size:13px;color:#78350F">'+m.name+'</div><div style="font-family:sans-serif;font-size:12px;color:#92400E;margin-top:1px">'+m.note+'</div></div></div>';
+  }).join('');
+
+  var budgetRows=[
+    {label:'4 Planned Dinners',cost:'$50&ndash;80',note:'Your selected recipes'},
+    {label:"Kids' Breakfasts &amp; Snacks",cost:'$20&ndash;25',note:'Eggs, yogurt, fruit, cereal'},
+    {label:'Adult Lunches (IF)',cost:'$15&ndash;25',note:'Leftovers, salads, protein'},
+    {label:'Pantry Staples',cost:'$8&ndash;15',note:'Oils, spices &mdash; not every week'},
+  ];
+  var budgetHtml=budgetRows.map(function(r,i){
+    return'<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:'+(i<budgetRows.length-1?'1px solid #86EFAC':'none')+'"><div><div style="font-family:sans-serif;font-weight:600;font-size:13px;color:#1A1A1A">'+r.label+'</div><div style="font-family:sans-serif;font-size:11px;color:#6B7280;margin-top:1px">'+r.note+'</div></div><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#2D6A4F;flex-shrink:0;margin-left:12px">'+r.cost+'</div></div>';
+  }).join('');
+
+  return'<div>'+
+    '<div style="background:linear-gradient(135deg,#B45309,#78350F);border-radius:18px;padding:20px;margin-bottom:14px">'+
+      '<div style="font-family:sans-serif;font-weight:800;font-size:17px;color:#fff;margin-bottom:2px">&#x1F4C5; Your Full Daily Schedule</div>'+
+      '<div style="font-family:sans-serif;font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:16px">16:8 IF &middot; 2.3 mi route &middot; meals &middot; earned treats</div>'+
+      schedHtml+
+    '</div>'+
+    '<div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:14px;padding:16px;margin-bottom:14px">'+
+      '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#92400E;margin-bottom:10px">&#x2615; Matthew\'s Coffee Strategy</div>'+
+      '<div style="font-family:sans-serif;font-size:13px;color:#1A1A1A;line-height:1.65;margin-bottom:12px"><strong>Black coffee doesn\'t break your fast.</strong> Zero calories, zero insulin response. Your 2 daily coffees make IF easier by suppressing appetite during the fast.</div>'+
+      coffeeHtml+
+    '</div>'+
+    '<div style="background:#FDF4FF;border:1px solid #E879F9;border-radius:14px;padding:16px;margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:24px">&#x1F36B;</span><div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#86198F">The Ice Cream Rule</div></div>'+
+      '<div style="font-family:sans-serif;font-size:13px;color:#701A75;line-height:1.65;margin-bottom:14px">Chocolate ice cream isn\'t the problem &mdash; it\'s the <strong>reward system</strong>. Complete a workout, earn your scoop. Makes the plan feel sustainable and gives you something to look forward to.</div>'+
+      iceCreamHtml+
+      '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #E879F9">'+
+        '<div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#86198F;margin-bottom:10px">&#x1F366; This Week\'s Earned Treats</div>'+
+        '<div style="display:flex;gap:5px">'+treatsHtml+'</div>'+
+        '<div style="font-family:sans-serif;font-size:12px;color:#A21CAF;margin-top:10px;text-align:center;font-weight:600">'+treatCount+' treat'+(treatCount!==1?'s':'')+' earned this week &#x1F389;</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:14px;padding:16px;margin-bottom:14px">'+
+      '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#854D0E;margin-bottom:4px">&#x1F467; Kids Eat Normally &mdash; 3 Meals + Snacks</div>'+
+      '<div style="font-family:sans-serif;font-size:13px;color:#78350F;margin-bottom:12px;line-height:1.6">While you fast, your girls need breakfast. Quick options under 5 minutes:</div>'+
+      kidsHtml+
+    '</div>'+
+    '<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:14px;padding:16px">'+
+      '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#2D6A4F;margin-bottom:12px">&#x1F4B0; Weekly Budget Guide</div>'+
+      budgetHtml+
+      '<div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:2px solid #86EFAC">'+
+        '<div style="font-family:sans-serif;font-weight:800;font-size:15px;color:#1A1A1A">Total Estimate</div>'+
+        '<div style="font-family:sans-serif;font-weight:800;font-size:15px;color:#2D6A4F">$93&ndash;145/wk</div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
 }
 
 function init(){
