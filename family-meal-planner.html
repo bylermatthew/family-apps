@@ -773,13 +773,20 @@ function lastUsedBadge(days){
   return'<span style="background:'+bg+';color:'+color+';font-size:10px;font-family:sans-serif;font-weight:700;padding:2px 8px;border-radius:10px">'+label+'</span>';
 }
 function buildList(){
-  var seen={},list=[];
+  var counts={},list=[];
+  // Count how many times each recipe is planned
   Object.values(S.plan).forEach(function(id){
     if(getQP(id))return;
+    counts[id]=(counts[id]||0)+1;
+  });
+  // Build ingredient list, appending quantity multiplier if needed
+  Object.keys(counts).forEach(function(id){
     var r=RECIPES.find(function(x){return x.id===id;});if(!r)return;
+    var n=counts[id];
     r.groceryItems.forEach(function(item){
       var key=item.name.toLowerCase().replace(/[^\w]/g,'').slice(0,22);
-      if(!seen[key]){seen[key]=true;list.push(Object.assign({},item,{id:'auto-'+key}));}
+      var name=n>1?item.name+' <span style="background:#FEF3C7;color:#92400E;font-size:11px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:4px">×'+n+'</span>':item.name;
+      list.push(Object.assign({},item,{id:'auto-'+key+'-'+id,name:name}));
     });
   });
   return list;
