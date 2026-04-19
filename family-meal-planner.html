@@ -801,7 +801,26 @@ document.addEventListener('click',function(e){
   else if(a==='close-pick'){sU({pickingDay:null});}
   else if(a==='set-filter'){
     U=Object.assign({},U,{filter:p});
-    // Partial update: only re-render the recipes content, no full page flash
+    // If picker modal is open, only update the cards and filter pills — no full re-render
+    if(U.pickingDay!==null){
+      var pc=document.getElementById('picker-cards');
+      var ph=document.getElementById('picker-header');
+      if(pc&&ph){
+        // Rebuild just the filtered card list
+        var list2=U.filter==='all'?RECIPES:U.filter==='fresh'?RECIPES.filter(function(r){var d=getLastUsed(r.id);return d===null||d>14;}):U.filter==='venison'?RECIPES.filter(function(r){return r.venison;}):RECIPES.filter(function(r){return r.method===U.filter;});
+        var opts2=[{id:'all',label:'All'},{id:'fresh',label:'🆕 Fresh'},{id:'grill',label:'🔥 Grill'},{id:'blackstone',label:'⬛ Blackstone'},{id:'oven',label:'♨️ Oven'},{id:'stovetop',label:'🍳 Stovetop'},{id:'slowcooker',label:'🥘 Slow Cooker'},{id:'venison',label:'🦌 Venison'}];
+        var newFilters='<div class="sx" style="display:flex;gap:6px;padding:0 18px 12px">'+opts2.map(function(o){var act=(U.filter===o.id);return'<button data-a="set-filter" data-p="'+o.id+'" style="padding:6px 14px;border-radius:20px;border:none;cursor:pointer;background:'+(act?'#6B7C6B':'#F3F4F6')+';color:'+(act?'#fff':'#6B7280')+';font-family:sans-serif;font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0">'+o.label+'</button>';}).join('')+'</div>';
+        var qpH='<div style="margin-bottom:14px"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7280;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Quick Pick</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+QUICK_PICKS.map(function(q){return'<button data-a="select-recipe" data-p="'+q.id+'" style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:'+q.bg+';border:1.5px solid '+q.border+';border-radius:22px;cursor:pointer;font-family:sans-serif;font-size:13px;font-weight:700;color:'+q.color+'"><span style="font-size:18px">'+q.emoji+'</span>'+q.name+'</button>';}).join('')+'</div></div>';
+        var newCards=list2.map(function(r){var m=gM(r.method);var lu=getLastUsed(r.id);var already=Object.values(S.plan).includes(r.id);return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';}).join('');
+        // Update filter pills in header and cards below — no full re-render
+        var filterEl=ph.querySelector('.sx');
+        if(filterEl)filterEl.outerHTML=newFilters;
+        pc.innerHTML=qpH+newCards;
+        pc.scrollTop=0;
+        return;
+      }
+    }
+    // Recipes tab partial update
     var mc=document.getElementById('main-content');
     if(mc&&U.tab===2){
       mc.innerHTML=rRecipes();
@@ -998,7 +1017,7 @@ function rPickerModal(){
     var m=gM(r.method);var lu=getLastUsed(r.id);var already=Object.values(S.plan).includes(r.id);
     return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';
   }).join('');
-  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-end"><div class="slide-up" style="background:#FFF8F8;border-radius:22px 22px 0 0;width:100%;max-height:88vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)"><div style="background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 0;flex-shrink:0"><div style="display:flex;justify-content:center;margin-bottom:10px"><div style="width:40px;height:4px;border-radius:2px;background:#D1D5DB"></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">Pick dinner for '+day+'</div><button data-a="close-pick" style="background:none;border:none;cursor:pointer;font-family:sans-serif;color:#6B7280;font-size:15px;font-weight:600">Cancel</button></div>'+filters+'</div><div class="sy" style="flex:1;padding:8px 16px 16px;overflow-y:auto">'+qpHtml+cards+'</div></div></div>';
+  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-end"><div class="slide-up" style="background:#FFF8F8;border-radius:22px 22px 0 0;width:100%;height:88vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)"><div id="picker-header" style="background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 0;flex-shrink:0"><div style="display:flex;justify-content:center;margin-bottom:10px"><div style="width:40px;height:4px;border-radius:2px;background:#D1D5DB"></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">Pick dinner for '+day+'</div><button data-a="close-pick" style="background:none;border:none;cursor:pointer;font-family:sans-serif;color:#6B7280;font-size:15px;font-weight:600">Cancel</button></div>'+filters+'</div><div id="picker-cards" class="sy" style="flex:1;padding:8px 16px 16px;overflow-y:auto">'+qpHtml+cards+'</div></div></div>';
 }
 
 function rChat(){
