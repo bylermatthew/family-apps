@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,viewport-fit=cover"/>
   <title>Family Meal Planner</title>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -905,7 +905,7 @@ function rApp(){
 
 function rHeader(){
   var planned=Object.keys(S.plan).length;
-  var cost=Object.values(S.plan).reduce(function(s,id){var r=RECIPES.find(function(x){return x.id===id;});if(!r)return s;var m=r.cost.match(/\$(\d+)&ndash;(\d+)/);return m?s+(+m[1]+ +m[2])/2:s;},0);
+  var cost=Object.values(S.plan).reduce(function(s,id){if(getQP(id))return s;var r=RECIPES.find(function(x){return x.id===id;});if(!r)return s;var m=r.cost.match(/\$(\d+)&ndash;(\d+)/);return m?s+(+m[1]+ +m[2])/2:s;},0);
   return'<div style="background:linear-gradient(135deg,#6B7C6B,#4A5A4A);padding:calc(var(--safe-top) + 16px) 20px 16px"><div style="color:rgba(255,255,255,0.7);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:sans-serif;margin-bottom:4px">Family Meal Planner</div><div style="color:#fff;font-family:sans-serif;font-weight:800;font-size:22px;margin-bottom:12px">This Week\'s Dinners</div><div style="display:flex;gap:10px"><div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 14px;flex:1;text-align:center"><div style="color:#fff;font-weight:800;font-size:22px;font-family:sans-serif">'+planned+'</div><div style="color:rgba(255,255,255,0.7);font-size:11px;font-family:sans-serif">of 7 planned</div></div><div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 14px;flex:1;text-align:center"><div style="color:#fff;font-weight:800;font-size:22px;font-family:sans-serif">'+(cost>0?'~$'+Math.round(cost):'-')+'</div><div style="color:rgba(255,255,255,0.7);font-size:11px;font-family:sans-serif">est. this week</div></div></div></div>';
 }
 
@@ -944,7 +944,7 @@ function rGrocery(){
   var sections=SECTS.map(function(sect){
     var items=allItems.filter(function(it){return it.section===sect.id;});
     if(!items.length)return'';
-    return'<div style="margin-bottom:20px"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;background:'+sect.bg+';padding:8px 14px;border-radius:10px;margin-bottom:8px">'+sect.label+'</div>'+items.map(function(it){var ck=!!S.checked[it.id];return'<div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid #F3F4F6"><button data-a="toggle-check" data-p="'+it.id+'" style="width:24px;height:24px;border-radius:6px;border:2px solid '+(ck?'#6B7C6B':'#D1D5DB')+';background:'+(ck?'#6B7C6B':'transparent')+';color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(ck?'✓':'')+'</button><span style="font-family:sans-serif;font-size:14px;color:'+(ck?'#9CA3AF':'#1A1A1A')+';text-decoration:'+(ck?'line-through':'none')+';flex:1">'+it.name+'</span>'+(it.custom?'<button data-a="remove-custom" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:0 4px">✕</button>':'')+(it.id&&it.id.startsWith&&it.id.startsWith('c-')?'<button data-a="remove-custom" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:0 4px">✕</button>':'')+'</div>';}).join('')+'</div>';
+    return'<div style="margin-bottom:20px"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;background:'+sect.bg+';padding:8px 14px;border-radius:10px;margin-bottom:8px">'+sect.label+'</div>'+items.map(function(it){var ck=!!S.checked[it.id];return'<div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid #F3F4F6"><button data-a="toggle-check" data-p="'+it.id+'" style="width:24px;height:24px;border-radius:6px;border:2px solid '+(ck?'#6B7C6B':'#D1D5DB')+';background:'+(ck?'#6B7C6B':'transparent')+';color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(ck?'✓':'')+'</button><span style="font-family:sans-serif;font-size:14px;color:'+(ck?'#9CA3AF':'#1A1A1A')+';text-decoration:'+(ck?'line-through':'none')+';flex:1">'+it.name+'</span>'+((it.custom||( it.id&&it.id.startsWith&&it.id.startsWith('c-')))?'<button data-a="remove-custom" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:0 4px">✕</button>':'')+'</div>';}).join('')+'</div>';
   }).join('');
 
   return'<div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">'+checkedCount+' of '+allItems.length+' items got</div><button data-a="build-grocery" style="background:#FFF0F0;border:1px solid #F4A0A0;border-radius:10px;padding:7px 14px;font-family:sans-serif;font-size:12px;font-weight:700;color:#6B7C6B;cursor:pointer">Rebuild</button></div>'+sections+
@@ -1052,7 +1052,7 @@ function rChat(){
       attachBar+
       '<div style="padding:10px 12px 12px;border-top:1px solid #E5E7EB;display:flex;gap:8px;flex-shrink:0;background:#fff;align-items:center">'+
         '<button data-a="attach-file" style="width:38px;height:38px;border-radius:50%;background:#F3F4F6;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0'+(U.attachedFile?';outline:2px solid #6B7C6B':'')+'">📎</button>'+
-        '<input id="chat-input" type="text" placeholder="'+(U.attachedFile?'Describe what to do with this file…':'Add, update, remove, or upload a recipe…')+'" '+(U.chatLoading?'disabled':'')+' style="flex:1;padding:10px 14px;border-radius:22px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:14px;outline:none;background:'+(U.chatLoading?'#F9FAFB':'#fff')+'"/>'+
+        '<input id="chat-input" type="text" placeholder="'+(U.attachedFile?'Describe what to do with this file…':'Add, update, remove, or upload a recipe…')+'" '+(U.chatLoading?'disabled':'')+' style="flex:1;padding:10px 14px;border-radius:22px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:16px;outline:none;background:'+(U.chatLoading?'#F9FAFB':'#fff')+'"/>'+
         '<button data-a="send-chat" '+(U.chatLoading?'disabled':'')+' style="width:42px;height:42px;border-radius:50%;background:'+(U.chatLoading?'#E5E7EB':'linear-gradient(135deg,#6B7C6B,#4A5A4A)')+';border:none;color:#fff;font-size:16px;cursor:'+(U.chatLoading?'default':'pointer')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">➤</button>'+
       '</div>'+
     '</div>'+
