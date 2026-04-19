@@ -799,7 +799,16 @@ document.addEventListener('click',function(e){
   if(a==='tab'){sU({tab:+p});}
   else if(a==='pick-day'){sU({pickingDay:+p,filter:'all'});}
   else if(a==='close-pick'){sU({pickingDay:null});}
-  else if(a==='set-filter'){sU({filter:p});}
+  else if(a==='set-filter'){
+    U=Object.assign({},U,{filter:p});
+    // Partial update: only re-render the recipes content, no full page flash
+    var mc=document.getElementById('main-content');
+    if(mc&&U.tab===2){
+      mc.innerHTML=rRecipes();
+    } else {
+      render();
+    }
+  }
   else if(a==='select-recipe'){
     if(U.pickingDay===null)return;
     var np=Object.assign({},S.plan);np[U.pickingDay]=p;
@@ -900,7 +909,7 @@ function rApp(){
   var tabBar='<div class="sx" style="background:#fff;border-bottom:2px solid #E5E7EB;padding:0 8px;display:flex">'+tabs.map(function(t,i){var a=(U.tab===i);return'<button data-a="tab" data-p="'+i+'" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:600;white-space:nowrap;color:'+(a?'#6B7C6B':'#6B7280')+';border-bottom:'+(a?'3px solid #6B7C6B':'3px solid transparent')+'">'+t+'</button>';}).join('')+'</div>';
   var content=(U.tab===0?rPlan():'')+(U.tab===1?rGrocery():'')+(U.tab===2?rRecipes():'')+(U.tab===3?rFamily():'');
   var floatingBtn='<button data-a="open-chat" style="position:fixed;bottom:calc(var(--safe-bot) + 22px);right:18px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#6B7C6B,#4A5A4A);color:#fff;border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(120,53,15,0.45);z-index:500">🤖</button>';
-  return'<div style="background:#FFF8F8;min-height:100vh">'+rHeader()+tabBar+'<div style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>'+floatingBtn;
+  return'<div style="background:#FFF8F8;min-height:100vh">'+rHeader()+tabBar+'<div id="main-content" style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>'+floatingBtn;
 }
 
 function rHeader(){
