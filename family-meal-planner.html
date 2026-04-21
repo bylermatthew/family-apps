@@ -927,8 +927,8 @@ document.addEventListener('click',function(e){
   if(a==='tab'){sU({tab:+p});}
   else if(a==='week-prev'){sU({activeWeek:shiftWeek(activeWeekKey(),-1),tab:0});}
   else if(a==='week-next'){sU({activeWeek:shiftWeek(activeWeekKey(),1),tab:0});}
-  else if(a==='pick-day-cal'){sU({pickingDay:{week:p,day:q},filter:U.filter||'all'});}
-  else if(a==='pick-day'){sU({pickingDay:{week:activeWeekKey(),day:p},filter:U.filter||'all'});}
+  else if(a==='pick-day-cal'){sU({pickingDay:{week:p,day:q},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
+  else if(a==='pick-day'){sU({pickingDay:{week:activeWeekKey(),day:p},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
   else if(a==='close-pick'){sU({pickingDay:null});}
   else if(a==='set-filter'){
     U=Object.assign({},U,{filter:p});
@@ -1213,6 +1213,17 @@ function rAutoFillModal(){
 }
 
 
+function filterPickerRecipes(val){
+  var v=(val||'').toLowerCase();
+  var pc=document.getElementById('picker-cards');
+  if(!pc)return;
+  pc.querySelectorAll('button[data-a="select-recipe"]').forEach(function(b){
+    b.style.display=(!v||b.textContent.toLowerCase().includes(v))?'flex':'none';
+  });
+  // Hide quick pick section when searching
+  var qp=pc.querySelector('div');
+  if(qp)qp.style.display=v?'none':'';
+}
 function filterRecipes(val){
   var v=(val||'').toLowerCase();
   var rc=document.getElementById('recipes-cards');
@@ -1479,7 +1490,7 @@ function rPickerModal(){
     var m=gM(r.method);var lu=getLastUsed(r.id);var already=Object.values(getWeekPlan(activeWeekKey())||{}).includes(r.id);
     return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';
   }).join('');
-  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-end"><div class="slide-up" style="background:#FFF8F8;border-radius:22px 22px 0 0;width:100%;height:88vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)"><div id="picker-header" style="background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 0;flex-shrink:0"><div style="display:flex;justify-content:center;margin-bottom:10px"><div style="width:40px;height:4px;border-radius:2px;background:#D1D5DB"></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">Pick dinner for '+day+'</div><button data-a="close-pick" style="background:none;border:none;cursor:pointer;font-family:sans-serif;color:#6B7280;font-size:15px;font-weight:600">Cancel</button></div>'+filters+'</div><div id="picker-cards" class="sy" style="flex:1;padding:8px 16px 16px;overflow-y:auto">'+qpHtml+cards+'</div></div></div>';
+  return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-end"><div class="slide-up" style="background:#FFF8F8;border-radius:22px 22px 0 0;width:100%;height:88vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)"><div id="picker-header" style="background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 0;flex-shrink:0"><div style="display:flex;justify-content:center;margin-bottom:10px"><div style="width:40px;height:4px;border-radius:2px;background:#D1D5DB"></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">Pick dinner for '+day+'</div><button data-a="close-pick" style="background:none;border:none;cursor:pointer;font-family:sans-serif;color:#6B7280;font-size:15px;font-weight:600">Cancel</button></div>'+'<input id="picker-search" type="text" placeholder="\uD83D\uDD0D Search meals…" oninput="filterPickerRecipes(this.value)" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:15px;outline:none;margin-bottom:10px;background:#F9F9F9"/>'+filters+'</div><div id="picker-cards" class="sy" style="flex:1;padding:8px 16px 16px;overflow-y:auto">'+qpHtml+cards+'</div></div></div>';
 }
 
 function rChat(){
