@@ -763,10 +763,7 @@ function applyAiAction(action){
   } else if(action.action==='remove_recipe'){
     var rid=action.id;if(!rid)return;
     var nr=(S.removedIds||[]).filter(function(x){return x!==rid;}).concat([rid]);
-    var np=Object.assign({},S.plan);
-    Object.keys(np).forEach(function(k){if(np[k]===rid)delete np[k];});
-    var nc3=(S.customRecipes||[]).filter(function(x){return x.id!==rid;});
-    sS({removedIds:nr,plan:np,customRecipes:nc3,groceryBuilt:false});
+        sS({removedIds:nr,plan:np,customRecipes:nc3,groceryBuilt:false});
   }
 }
 function sendChat(msg){
@@ -1017,7 +1014,7 @@ document.addEventListener('click',function(e){
     var remaining=(S.groceryItems||[]).filter(function(it){return!S.checked[it.id];});
     // For any recipe that now has zero items left in list, reset its meal count
     // so next time it's added to plan, fresh items will be generated
-    S=Object.assign({},S,{groceryItems:remaining,checked:{}});fbWrite(S);render();
+    var clearedChecked={};S=Object.assign({},S,{groceryItems:remaining,checked:clearedChecked});fbWrite(S);render();
   }
   else if(a==='edit-grocery-item'){sU({editingGroceryId:p});}
   else if(a==='cancel-edit-grocery'){sU({editingGroceryId:null});}
@@ -1083,7 +1080,7 @@ document.addEventListener('click',function(e){
   else if(a==='delete-cat'){
     var dcid=p;var cm3=Object.assign({},S.customMethods||{});delete cm3[dcid];
     var dm=(S.deletedMethods||[]).concat(METHODS[dcid]?[dcid]:[]);
-    sS({customMethods:cm3,deletedMethods:dm,groceryBuilt:false});
+    sS({customMethods:cm3,deletedMethods:dm});
   }
   else if(a==='restore-cat'){
     var dm2=(S.deletedMethods||[]).filter(function(x){return x!==p;});sS({deletedMethods:dm2});
@@ -1153,7 +1150,10 @@ document.addEventListener('click',function(e){
     var dnp=Object.assign({},S.weeks||{});
     Object.keys(dnp).forEach(function(wk){var pl=Object.assign({},dnp[wk]);Object.keys(pl).forEach(function(d){if(pl[d]===drid)delete pl[d];});dnp[wk]=pl;});
     var dnc=(S.customRecipes||[]).filter(function(x){return x.id!==drid;});
-    sS({removedIds:dnr,weeks:dnp,customRecipes:dnc,groceryBuilt:false});sU({confirmDeleteId:null,viewRecipe:null});
+    // Remove grocery items tied to this recipe's slots
+    var cleanedItems=(S.groceryItems||[]).filter(function(it){return it.sourceRecipeId!==drid;});
+    var cleanedSlots=(S.groceryAccountedSlots||[]).filter(function(sl){return sl.indexOf(drid)!==0;});
+    sS({removedIds:dnr,weeks:dnp,customRecipes:dnc,groceryItems:cleanedItems,groceryAccountedSlots:cleanedSlots});sU({confirmDeleteId:null,viewRecipe:null});
   }
 });
 
@@ -1215,22 +1215,23 @@ function rAutoFillModal(){
 
 
 function filterPickerRecipes(val){
-  var v=(val||'').toLowerCase();
+  var v=normalizeSearch(val);
   var pc=document.getElementById('picker-cards');
   if(!pc)return;
   pc.querySelectorAll('button[data-a="select-recipe"]').forEach(function(b){
-    b.style.display=(!v||b.textContent.toLowerCase().includes(v))?'flex':'none';
+    b.style.display=(!v||normalizeSearch(b.textContent).includes(v))?'flex':'none';
   });
   // Hide quick pick section when searching
   var qp=pc.querySelector('div');
   if(qp)qp.style.display=v?'none':'';
 }
+function normalizeSearch(s){return(s||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();}
 function filterRecipes(val){
-  var v=(val||'').toLowerCase();
+  var v=normalizeSearch(val);
   var rc=document.getElementById('recipes-cards');
   if(!rc)return;
   rc.querySelectorAll('button').forEach(function(b){
-    b.style.display=(!v||b.textContent.toLowerCase().includes(v))?'flex':'none';
+    b.style.display=(!v||normalizeSearch(b.textContent).includes(v))?'flex':'none';
   });
 }
 
@@ -1243,7 +1244,8 @@ function runAutoFill(ingredients,startWeek,numWeeks,daysPerWeek){
   var weeksList=[];
   for(var wi=0;wi<numWeeks;wi++){weeksList.push(shiftWeek(startWeek,wi));}
   // Build the plan targets for AI
-  var weekTargets=weeksList.map(function(wk){
+  var todayWk=weekKey(new Date());
+  var weekTargets=weeksList.filter(function(wk){return wk>=todayWk;}).map(function(wk){
     var existing=getWeekPlan(wk)||{};
     var emptyDays=dayNames.filter(function(d){return !existing[d];});
     var daysToFill=emptyDays.slice(0,daysPerWeek); // consecutive from first empty
@@ -1732,109 +1734,6 @@ function rManageCatsModal(){
           '<button data-a="add-cat" style="width:100%;padding:12px;background:#6B7C6B;color:#fff;border:none;border-radius:10px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer">Add Category</button>'+
         '</div>'+
         '<button data-a="close-manage-cats" style="width:100%;padding:14px;background:#F3F4F6;border:none;border-radius:12px;font-family:sans-serif;font-size:15px;font-weight:600;color:#6B7280;cursor:pointer;margin-top:12px">Done</button>'+
-      '</div>'+
-    '</div>'+
-  '</div>';
-}
-
-function rFamily(){
-  var sched=[
-    {time:'6:00 AM',icon:'&#x2600;&#xFE0F;',label:'Wake up',note:'',type:'base'},
-    {time:'6:30 AM',icon:'&#x2615;',label:"Matthew's Coffee #1",note:'Black only &mdash; zero calories, 100% IF approved',type:'coffee'},
-    {time:'7:00 AM',icon:'&#x1F467;',label:"Kids' breakfast",note:'You fast, they eat &mdash; eggs, oatmeal, yogurt',type:'kids'},
-    {time:'10:00 AM',icon:'&#x2615;',label:"Matthew's Coffee #2",note:'Still black until noon. Caffeine helps suppress hunger.',type:'coffee'},
-    {time:'NOON',icon:'',label:'EATING WINDOW OPENS',note:'',type:'divider'},
-    {time:'12:00 PM',icon:'&#x1F37D;&#xFE0F;',label:'Break your fast',note:'Protein first &mdash; chicken, eggs, steak, or cheese before any carbs',type:'eat'},
-    {time:'3:00 PM',icon:'&#x1F34E;',label:'Snack (optional)',note:'Apple + peanut butter or string cheese',type:'eat'},
-    {time:'5:30 PM',icon:'&#x1F3C3;',label:'Workout',note:'2.3 mi stroller run or 15-min home circuit',type:'workout'},
-    {time:'7:00 PM',icon:'&#x1F37D;&#xFE0F;',label:'Family dinner',note:'Your planned meal &mdash; everyone eats together',type:'eat'},
-    {time:'7:30 PM',icon:'&#x1F36B;',label:"Wife's earned treat!",note:'1 scoop chocolate ice cream &mdash; workout days only &#x1F389;',type:'treat'},
-    {time:'8:00 PM',icon:'',label:'EATING WINDOW CLOSES',note:'',type:'divider'},
-  ];
-  var schedHtml=sched.map(function(item){
-    if(item.type==='divider')return'<div style="display:flex;align-items:center;gap:8px;margin:10px 0"><div style="height:1px;flex:1;background:rgba(255,255,255,0.2)"></div><div style="font-family:sans-serif;font-size:9px;font-weight:800;color:rgba(255,255,255,0.65);letter-spacing:1.5px">'+item.label+' &mdash; '+item.time+'</div><div style="height:1px;flex:1;background:rgba(255,255,255,0.2)"></div></div>';
-    var lc=item.type==='treat'?'#F9A8D4':item.type==='workout'?'#F4A0A0':item.type==='coffee'?'#FDE68A':'#fff';
-    return'<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.07)"><div style="width:56px;font-family:sans-serif;font-size:10px;color:rgba(255,255,255,0.45);flex-shrink:0;padding-top:2px">'+item.time+'</div><div style="width:20px;text-align:center;font-size:15px;flex-shrink:0">'+item.icon+'</div><div style="flex:1"><div style="font-family:sans-serif;font-size:13px;font-weight:700;color:'+lc+'">'+item.label+'</div>'+(item.note?'<div style="font-family:sans-serif;font-size:11px;color:rgba(255,255,255,0.5);margin-top:1px">'+item.note+'</div>':'')+'</div></div>';
-  }).join('');
-
-  var coffeeItems=[
-    {label:'Coffee #1 &mdash; 6:30 AM',note:'Drink it black while getting the kids ready. Coffee + fasting = peak fat-burning conditions.'},
-    {label:'Coffee #2 &mdash; 10:00 AM',note:'Keep it black until noon. Once you break your fast at 12 PM, you can add a splash of cream if you want.'},
-    {label:'Avoid before noon',note:'Lattes, mochas, or anything with cream/milk/sugar &mdash; these spike insulin and break your fast.'},
-  ];
-  var coffeeHtml=coffeeItems.map(function(c,i){
-    return'<div style="padding:10px 0;border-bottom:'+(i<coffeeItems.length-1?'1px solid #FDE68A':'none')+'"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#6B001A">'+c.label+'</div><div style="font-family:sans-serif;font-size:12px;color:#4A5A4A;margin-top:3px;line-height:1.55">'+c.note+'</div></div>';
-  }).join('');
-
-  var iceCreamItems=[
-    {icon:'&#x2705;',label:'Workout days &mdash; earn it',note:'1 scoop at 7:30 PM. Inside your eating window, earned, and guilt-free.'},
-    {icon:'&#x1F4A1;',label:'Make it premium',note:'One really good scoop of quality chocolate ice cream is more satisfying than a whole cheap pint.'},
-    {icon:'&#x1F36B;',label:'Non-workout days',note:'A few squares of dark chocolate (~80 cal) satisfies the craving without the full treat.'},
-  ];
-  var iceCreamHtml=iceCreamItems.map(function(c,i){
-    return'<div style="display:flex;gap:12px;padding:9px 0;border-bottom:'+(i<iceCreamItems.length-1?'1px solid #F0ABFC':'none')+'"><div style="font-size:18px;flex-shrink:0">'+c.icon+'</div><div><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#86198F">'+c.label+'</div><div style="font-family:sans-serif;font-size:12px;color:#701A75;margin-top:2px;line-height:1.5">'+c.note+'</div></div></div>';
-  }).join('');
-
-  var treatDays=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  var treatsHtml=treatDays.map(function(day){
-    var earned=S.treats&&S.treats[day];
-    return'<button data-a="toggle-treat" data-p="'+day+'" style="flex:1;padding:8px 2px;border-radius:10px;border:2px solid '+(earned?'#C026D3':'#E879F9')+';background:'+(earned?'#F0ABFC':'#fff')+';cursor:pointer;text-align:center"><div style="font-size:'+(earned?16:13)+'px;line-height:1">'+(earned?'&#x1F36B;':'&middot;')+'</div><div style="font-family:sans-serif;font-size:9px;font-weight:700;color:'+(earned?'#86198F':'#C084FC')+';margin-top:3px">'+day+'</div></button>';
-  }).join('');
-  var treatCount=Object.values(S.treats||{}).filter(Boolean).length;
-
-  var kidsItems=[
-    {emoji:'&#x1F373;',name:'Scrambled Eggs &amp; Toast',note:'5 min. Works for both.'},
-    {emoji:'&#x1F963;',name:'Oatmeal with Banana',note:'Mash banana for the 1yo.'},
-    {emoji:'&#x1FAD0;',name:'Greek Yogurt &amp; Berries',note:'Cut berries in half for 1yo.'},
-    {emoji:'&#x1F34C;',name:'Banana &amp; Peanut Butter Toast',note:'Fine for 1yo if no nut allergy.'},
-    {emoji:'&#x1F95B;',name:'Cheerios &amp; Whole Milk',note:'Great self-feeding practice for 1yo.'},
-  ];
-  var kidsHtml=kidsItems.map(function(m){
-    return'<div style="display:flex;gap:10px;background:rgba(255,255,255,0.55);border-radius:10px;padding:9px 12px;margin-bottom:6px"><div style="font-size:20px;flex-shrink:0">'+m.emoji+'</div><div><div style="font-family:sans-serif;font-weight:600;font-size:13px;color:#4A5A4A">'+m.name+'</div><div style="font-family:sans-serif;font-size:12px;color:#6B001A;margin-top:1px">'+m.note+'</div></div></div>';
-  }).join('');
-
-  var budgetRows=[
-    {label:'7 Planned Dinners',cost:'$70&ndash;110',note:'Your selected recipes + pizza/eating out nights'},
-    {label:"Kids' Breakfasts &amp; Snacks",cost:'$20&ndash;25',note:'Eggs, yogurt, fruit, cereal'},
-    {label:'Adult Lunches (IF)',cost:'$15&ndash;25',note:'Leftovers, salads, protein'},
-    {label:'Pantry Staples',cost:'$8&ndash;15',note:'Oils, spices &mdash; not every week'},
-  ];
-  var budgetHtml=budgetRows.map(function(r,i){
-    return'<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:'+(i<budgetRows.length-1?'1px solid #86EFAC':'none')+'"><div><div style="font-family:sans-serif;font-weight:600;font-size:13px;color:#1A1A1A">'+r.label+'</div><div style="font-family:sans-serif;font-size:11px;color:#6B7280;margin-top:1px">'+r.note+'</div></div><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#2D6A4F;flex-shrink:0;margin-left:12px">'+r.cost+'</div></div>';
-  }).join('');
-
-  return'<div>'+
-    '<div style="background:linear-gradient(135deg,#6B7C6B,#4A5A4A);border-radius:18px;padding:20px;margin-bottom:14px">'+
-      '<div style="font-family:sans-serif;font-weight:800;font-size:17px;color:#fff;margin-bottom:2px">&#x1F4C5; Your Full Daily Schedule</div>'+
-      '<div style="font-family:sans-serif;font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:16px">16:8 IF &middot; 2.3 mi route &middot; meals &middot; earned treats</div>'+
-      schedHtml+
-    '</div>'+
-    '<div style="background:#FFF0F0;border:1px solid #F4A0A0;border-radius:14px;padding:16px;margin-bottom:14px">'+
-      '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#6B001A;margin-bottom:10px">&#x2615; Matthew\'s Coffee Strategy</div>'+
-      '<div style="font-family:sans-serif;font-size:13px;color:#1A1A1A;line-height:1.65;margin-bottom:12px"><strong>Black coffee doesn\'t break your fast.</strong> Zero calories, zero insulin response. Your 2 daily coffees make IF easier by suppressing appetite during the fast.</div>'+
-      coffeeHtml+
-    '</div>'+
-    '<div style="background:#FDF4FF;border:1px solid #E879F9;border-radius:14px;padding:16px;margin-bottom:14px">'+
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:24px">&#x1F36B;</span><div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#86198F">The Ice Cream Rule</div></div>'+
-      '<div style="font-family:sans-serif;font-size:13px;color:#701A75;line-height:1.65;margin-bottom:14px">Chocolate ice cream isn\'t the problem &mdash; it\'s the <strong>reward system</strong>. Complete a workout, earn your scoop. Makes the plan feel sustainable and gives you something to look forward to.</div>'+
-      iceCreamHtml+
-      '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #E879F9">'+
-        '<div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#86198F;margin-bottom:10px">&#x1F366; This Week\'s Earned Treats</div>'+
-        '<div style="display:flex;gap:5px">'+treatsHtml+'</div>'+
-        '<div style="font-family:sans-serif;font-size:12px;color:#A21CAF;margin-top:10px;text-align:center;font-weight:600">'+treatCount+' treat'+(treatCount!==1?'s':'')+' earned this week &#x1F389;</div>'+
-      '</div>'+
-    '</div>'+
-    '<div style="background:#FDE8E8;border:1px solid #FDE047;border-radius:14px;padding:16px;margin-bottom:14px">'+
-      '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#7A0020;margin-bottom:4px">&#x1F467; Kids Eat Normally &mdash; 3 Meals + Snacks</div>'+
-      '<div style="font-family:sans-serif;font-size:13px;color:#4A5A4A;margin-bottom:12px;line-height:1.6">While you fast, your girls need breakfast. Quick options under 5 minutes:</div>'+
-      kidsHtml+
-    '</div>'+
-    '<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:14px;padding:16px">'+
-      '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#2D6A4F;margin-bottom:12px">&#x1F4B0; Weekly Budget Guide</div>'+
-      budgetHtml+
-      '<div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:2px solid #86EFAC">'+
-        '<div style="font-family:sans-serif;font-weight:800;font-size:15px;color:#1A1A1A">Total Estimate</div>'+
-        '<div style="font-family:sans-serif;font-weight:800;font-size:15px;color:#2D6A4F">$113&ndash;175/wk</div>'+
       '</div>'+
     '</div>'+
   '</div>';
