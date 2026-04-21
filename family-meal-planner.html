@@ -824,7 +824,7 @@ function getQP(id){return QUICK_PICKS.find(function(q){return q.id===id;});}
 var EMPTY={weeks:{},checked:{},custom:[],autoItems:[],groceryBuilt:false,history:{},customRecipes:[],removedIds:[],customMethods:{},deletedMethods:[]};
 
 var S=Object.assign({},EMPTY);
-var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,dragDay:null};
+var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null};
 
 function fbWrite(d){fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}
 function gM(t){var m=getMethods();return m[t]||m.stovetop||Object.values(m)[0];}
@@ -885,7 +885,7 @@ document.addEventListener('click',function(e){
         if(filterEl){filterEl.innerHTML=opts3.map(function(o){var act=(U.filter===o.id);return'<button data-a="set-filter" data-p="'+o.id+'" style="padding:6px 14px;border-radius:20px;border:none;cursor:pointer;background:'+(act?'#6B7C6B':'#F3F4F6')+';color:'+(act?'#fff':'#6B7280')+';font-family:sans-serif;font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0">'+o.label+'</button>';}).join('');}
         var list3=U.filter==='all'?RECIPES:U.filter==='fresh'?RECIPES.filter(function(r){var d=getLastUsed(r.id);return d===null||d>14;}):RECIPES.filter(function(r){return r.method===U.filter;});
         var qpH3='<div style="margin-bottom:14px"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7280;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Quick Pick</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+QUICK_PICKS.map(function(q2){return'<button data-a="select-recipe" data-p="'+q2.id+'" style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:'+q2.bg+';border:1.5px solid '+q2.border+';border-radius:22px;cursor:pointer;font-family:sans-serif;font-size:13px;font-weight:700;color:'+q2.color+'"><span style="font-size:18px">'+q2.emoji+'</span>'+q2.name+'</button>';}).join('')+'</div></div>';
-        pc.innerHTML=qpH3+list3.map(function(r){var m=gM(r.method);var lu=getLastUsed(r.id);var wk=U.pickingDay&&U.pickingDay.week||activeWeekKey();var pl=getWeekPlan(wk);var already=Object.values(pl).includes(r.id);return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A;margin-bottom:3px">'+r.name+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';}).join('');
+        pc.innerHTML=qpH3+list3.map(function(r){var m=gM(r.method);var lu=getLastUsed(r.id);var wk=U.pickingDay&&U.pickingDay.week||activeWeekKey();var pl=getWeekPlan(wk)||{};var already=Object.values(pl).includes(r.id);return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A;margin-bottom:3px">'+r.name+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';}).join('');
         return;
       }
     }
@@ -929,6 +929,21 @@ document.addEventListener('click',function(e){
     if(dayName)delete pl5[dayName];
     setWeekPlan(wk5,pl5);
   }
+  else if(a==='swap-day'){
+    if(U.swapFromDay===p){sU({swapFromDay:null});}
+    else if(U.swapFromDay){
+      // Swap the two days
+      var swk=activeWeekKey();
+      var spl=Object.assign({},getWeekPlan(swk));
+      var tmp=spl[U.swapFromDay];
+      if(spl[p])spl[U.swapFromDay]=spl[p];else delete spl[U.swapFromDay];
+      if(tmp)spl[p]=tmp;else delete spl[p];
+      setWeekPlan(swk,spl);
+      sU({swapFromDay:null});
+    } else {
+      sU({swapFromDay:p});
+    }
+  }
   else if(a==='view-recipe'){sU({viewRecipe:p});}
   else if(a==='close-recipe'){sU({viewRecipe:null});}
   else if(a==='build-grocery'){sS({autoItems:buildList(),groceryBuilt:true,checked:{}});}
@@ -954,14 +969,8 @@ document.addEventListener('click',function(e){
     var numWeeks=weeksInp?parseInt(weeksInp.value)||1:1;
     var daysPerWeek=daysInp?parseInt(daysInp.value)||4:4;
     var startWeek=startInp?startInp.value:activeWeekKey();
-    sU({showAutoFill:false,chatOpen:true});
-    var dayNames3=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    var weeksList=[];
-    for(var wi=0;wi<numWeeks;wi++){weeksList.push(shiftWeek(startWeek,wi));}
-    var existingPlans={};
-    weeksList.forEach(function(wk){existingPlans[wk]=getWeekPlan(wk);});
-    var msg='Auto-fill my meal plan. Ingredients: '+(ingredients||'none')+'. Weeks: '+weeksList.map(function(k){return k+' ('+fmtWeekLabel(k)+')';}).join(', ')+'. Meals per week: '+daysPerWeek+'. Pick varied meals, mix cooking methods, no repeats in same week. Skip already-planned days. Current plans: '+JSON.stringify(existingPlans)+'. Return a set_week_plan JSON block for each week.';
-    sendChat(msg);
+    sU({showAutoFill:false});
+    runAutoFill(ingredients,startWeek,numWeeks,daysPerWeek);
   }
   else if(a==='manage-cats'){sU({showManageCats:true});}
   else if(a==='close-manage-cats'){sU({showManageCats:false,editCatId:null});}
@@ -1087,90 +1096,14 @@ document.addEventListener('keydown',function(e){
 });
 
 
-// ── Touch drag-and-drop for iOS ─────────────────────────────
-var dragSrcDay=null,dragSrcWeek=null;
-document.addEventListener('dragstart',function(e){
-  var el=e.target.closest('[data-day]');if(!el)return;
-  dragSrcDay=el.dataset.day;dragSrcWeek=activeWeekKey();
-  e.dataTransfer.effectAllowed='move';
-  setTimeout(function(){el.style.opacity='0.4';},0);
-});
-document.addEventListener('dragend',function(e){
-  var el=e.target.closest('[data-day]');if(el)el.style.opacity='1';
-  dragSrcDay=null;dragSrcWeek=null;
-});
-document.addEventListener('dragover',function(e){
-  var el=e.target.closest('[data-day]');if(!el)return;
-  e.preventDefault();e.dataTransfer.dropEffect='move';
-  el.style.borderColor='#6B7C6B';
-});
-document.addEventListener('dragleave',function(e){
-  var el=e.target.closest('[data-day]');if(!el)return;
-  el.style.borderColor='';
-});
-document.addEventListener('drop',function(e){
-  var el=e.target.closest('[data-day]');if(!el||!dragSrcDay)return;
-  e.preventDefault();
-  el.style.borderColor='';
-  var destDay=el.dataset.day;
-  if(destDay===dragSrcDay)return;
-  var plan=Object.assign({},getWeekPlan(dragSrcWeek));
-  var srcId=plan[dragSrcDay];
-  var destId=plan[destDay];
-  if(srcId)plan[destDay]=srcId;else delete plan[destDay];
-  if(destId)plan[dragSrcDay]=destId;else delete plan[dragSrcDay];
-  setWeekPlan(dragSrcWeek,plan);
-  dragSrcDay=null;dragSrcWeek=null;
-});
-
-// ── Touch drag for iPhone ────────────────────────────────────
-var touchDragSrc=null,touchDragEl=null,touchClone=null;
-document.addEventListener('touchstart',function(e){
-  var el=e.target.closest('[data-a="drag-start"]');if(!el)return;
-  touchDragSrc=el.dataset.day;
-  touchDragEl=el;
-  var touch=e.touches[0];
-  touchClone=el.cloneNode(true);
-  touchClone.style.cssText='position:fixed;top:'+(touch.clientY-30)+'px;left:10px;right:10px;opacity:0.85;z-index:9999;pointer-events:none;border-radius:14px;';
-  document.body.appendChild(touchClone);
-  el.style.opacity='0.3';
-},{passive:true});
-document.addEventListener('touchmove',function(e){
-  if(!touchClone)return;
-  var touch=e.touches[0];
-  touchClone.style.top=(touch.clientY-40)+'px';
-  // highlight target
-  document.querySelectorAll('[data-day]').forEach(function(d){d.style.borderColor='';});
-  var target=document.elementFromPoint(touch.clientX,touch.clientY);
-  var targetEl=target&&target.closest('[data-day]');
-  if(targetEl&&targetEl!==touchDragEl)targetEl.style.borderColor='#6B7C6B';
-},{passive:true});
-document.addEventListener('touchend',function(e){
-  if(!touchClone||!touchDragSrc){touchClone&&touchClone.remove();touchClone=null;return;}
-  var touch=e.changedTouches[0];
-  var target=document.elementFromPoint(touch.clientX,touch.clientY);
-  var targetEl=target&&target.closest('[data-day]');
-  if(touchClone)touchClone.remove();touchClone=null;
-  if(touchDragEl)touchDragEl.style.opacity='1';
-  document.querySelectorAll('[data-day]').forEach(function(d){d.style.borderColor='';});
-  if(targetEl&&targetEl.dataset.day&&targetEl.dataset.day!==touchDragSrc){
-    var plan=Object.assign({},getWeekPlan(activeWeekKey()));
-    var srcId=plan[touchDragSrc];var destId=plan[targetEl.dataset.day];
-    if(srcId)plan[targetEl.dataset.day]=srcId;else delete plan[targetEl.dataset.day];
-    if(destId)plan[touchDragSrc]=destId;else delete plan[touchDragSrc];
-    setWeekPlan(activeWeekKey(),plan);
-  }
-  touchDragSrc=null;touchDragEl=null;
-});
-
 // ── Auto-Fill Modal ──────────────────────────────────────────
 function rAutoFillModal(){
   if(!U.showAutoFill)return'';
   var today=weekKey(new Date());
   var weekOpts='';
-  for(var wi=-1;wi<=8;wi++){
+  for(var wi=0;wi<=8;wi++){
     var wk=shiftWeek(today,wi);
-    var lbl=(wi===0?'This week':wi===-1?'Last week':wi===1?'Next week':fmtWeekLabel(wk));
+    var lbl=(wi===0?'This week':wi===1?'Next week':fmtWeekLabel(wk));
     weekOpts+='<option value="'+wk+'"'+(wi===0?' selected':'')+'>'+lbl+' ('+fmtWeekLabel(wk)+')</option>';
   }
   return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3500;display:flex;align-items:flex-end">'+
@@ -1194,6 +1127,67 @@ function rAutoFillModal(){
       '</div>'+
     '</div>'+
   '</div>';
+}
+
+
+function filterRecipes(val){
+  var v=(val||'').toLowerCase();
+  var rc=document.getElementById('recipes-cards');
+  if(!rc)return;
+  rc.querySelectorAll('button').forEach(function(b){
+    b.style.display=(!v||b.textContent.toLowerCase().includes(v))?'flex':'none';
+  });
+}
+
+function runAutoFill(ingredients,startWeek,numWeeks,daysPerWeek){
+  RECIPES=getRecipes();
+  var apiKey=localStorage.getItem('mp_ak')||'';
+  if(!apiKey){sU({chatOpen:true});return;}
+  var dayNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  // Build week+day targets: fill consecutive empty slots per week starting from first empty
+  var weeksList=[];
+  for(var wi=0;wi<numWeeks;wi++){weeksList.push(shiftWeek(startWeek,wi));}
+  // Build the plan targets for AI
+  var weekTargets=weeksList.map(function(wk){
+    var existing=getWeekPlan(wk)||{};
+    var emptyDays=dayNames.filter(function(d){return !existing[d];});
+    var daysToFill=emptyDays.slice(0,daysPerWeek); // consecutive from first empty
+    return{week:wk,label:fmtWeekLabel(wk),existing:existing,fill:daysToFill};
+  }).filter(function(wt){return wt.fill.length>0;});
+  if(weekTargets.length===0){alert('All selected days are already planned!');return;}
+  var recipeList=RECIPES.map(function(r){return r.id+': '+r.name+' ('+r.method+')';}).join(', ');
+  var sysPrompt='You are a meal planner assistant. Given a recipe library and constraints, return ONLY a JSON array of set_week_plan actions — no explanation, no markdown, just the raw JSON array. Each item: {"action":"set_week_plan","week":"YYYY-MM-DD","plan":{"Monday":"recipe-id",...}}. Only include the days specified. Pick varied meals, mix cooking methods across each week, avoid repeating the same recipe in the same week.';
+  var userMsg='Recipe library: '+recipeList+'. Ingredients on hand: '+(ingredients||'none specified')+'. Fill these weeks: '+JSON.stringify(weekTargets.map(function(wt){return{week:wt.week,daysToFill:wt.fill,alreadyPlanned:Object.keys(wt.existing)};}));
+  // Show a subtle loading indicator on the plan tab
+  var pd=document.getElementById('plan-days');
+  if(pd)pd.innerHTML='<div style="text-align:center;padding:40px 20px"><div style="font-size:36px;margin-bottom:12px">✨</div><div style="font-family:sans-serif;font-size:15px;color:#6B7C6B;font-weight:700">Auto-filling your meals…</div><div style="font-family:sans-serif;font-size:13px;color:#9CA3AF;margin-top:6px">This takes a few seconds</div></div>';
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,system:sysPrompt,messages:[{role:'user',content:userMsg}]})
+  }).then(function(resp){return resp.json();}).then(function(data){
+    if(data.error)throw new Error(data.error.message);
+    var text=(data.content&&data.content[0]&&data.content[0].text)||'[]';
+    // Parse JSON array directly
+    var clean=text.replace(/^[^\[]*/, '').replace(/[^\]]*$/, '');
+    var actions=JSON.parse(clean);
+    if(!Array.isArray(actions))actions=[actions];
+    actions.forEach(function(action){
+      if(action.action==='set_week_plan'&&action.week&&action.plan){
+        var existing=Object.assign({},getWeekPlan(action.week)||{});
+        Object.keys(action.plan).forEach(function(day){
+          if(!existing[day])existing[day]=action.plan[day];
+        });
+        var w=Object.assign({},S.weeks||{});
+        w[action.week]=existing;
+        S=Object.assign({},S,{weeks:w,groceryBuilt:false});
+      }
+    });
+    fbWrite(S);render();
+  }).catch(function(err){
+    render(); // restore plan view
+    alert('Auto-fill error: '+err.message+'. Make sure your API key is set in the AI assistant.');
+  });
 }
 
 function render(){
@@ -1256,13 +1250,13 @@ function rPlan(){
     var isDragging=(U.dragDay===day);
     var dateLabel=fmtDate(weekDates[i]);
     if(qp){
-      return'<div data-day="'+day+'" data-a="drag-start" draggable="true" style="background:'+qp.bg+';border:1.5px solid '+qp.border+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative'+(isDragging?';opacity:0.4':'')+'">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div>'+
+      return'<div data-day="'+day+'" style="background:'+qp.bg+';border:1.5px solid '+qp.border+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative'+(isDragging?';opacity:0.4':'')+'">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><div style="display:flex;gap:6px"><button data-a="swap-day" data-p="'+day+'" style="background:'+(U.swapFromDay===day?'#6B7C6B':'rgba(0,0,0,0.06)')+';border:none;border-radius:7px;padding:3px 8px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:'+(U.swapFromDay===day?'#fff':'#6B7280')+'">'+(U.swapFromDay&&U.swapFromDay!==day?'Swap here':'⇄'+(U.swapFromDay===day?' Cancel':''))+'</button><button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div></div>'+
         '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px">'+qp.emoji+'</div><div><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:'+qp.color+'">'+qp.name+'</div><div style="font-family:sans-serif;font-size:11px;color:'+qp.color+';opacity:0.75">'+qp.note+'</div></div></div>'+
       '</div>';
     } else if(r){
-      return'<div data-day="'+day+'" data-a="drag-start" draggable="true" style="background:#fff;border:'+(isToday?'2px':'1.5px')+' solid '+(isToday?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative'+(isDragging?';opacity:0.4':'')+'">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div>'+
+      return'<div data-day="'+day+'" style="background:#fff;border:'+(isToday?'2px':'1.5px')+' solid '+(isToday?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative'+(isDragging?';opacity:0.4':'')+'">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><div style="display:flex;gap:6px"><button data-a="swap-day" data-p="'+day+'" style="background:'+(U.swapFromDay===day?'#6B7C6B':'rgba(0,0,0,0.06)')+';border:none;border-radius:7px;padding:3px 8px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:'+(U.swapFromDay===day?'#fff':'#6B7280')+'">'+(U.swapFromDay&&U.swapFromDay!==day?'Swap here':'⇄'+(U.swapFromDay===day?' Cancel':''))+'</button><button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div></div>'+
         '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;margin-bottom:3px">'+r.name+'</div><div style="display:flex;gap:5px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 7px;border-radius:9px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+lastUsedBadge(lu)+'</div></div><button data-a="view-recipe" data-p="'+r.id+'" style="background:#F0F4F0;border:1px solid #C5D5C5;border-radius:9px;padding:6px 10px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:#6B7C6B;flex-shrink:0">View</button></div>'+
       '</div>';
     } else {
@@ -1273,7 +1267,8 @@ function rPlan(){
       '</div>';
     }
   }).join('');
-  return'<div id="plan-days">'+days+'</div>';
+  var swapHint=U.swapFromDay?'<div style="background:#6B7C6B;color:#fff;font-family:sans-serif;font-size:13px;font-weight:700;text-align:center;padding:10px;border-radius:12px;margin-bottom:10px">⇄ Tap \'Swap here\' on another day to swap with '+U.swapFromDay+'</div>':'';
+  return'<div id="plan-days">'+swapHint+days+'</div>';
 }
 
 function rGrocery(){
@@ -1298,7 +1293,7 @@ function rGrocery(){
 }
 
 function rRecipes(){
-  var searchBar='<input id="recipe-search" type="text" placeholder="🔍  Search recipes…" oninput="(function(){var v=this.value.toLowerCase();var rc=document.getElementById(\'recipes-cards\');if(rc)rc.querySelectorAll(\'button[data-a=view-recipe]\').forEach(function(b){var name=b.querySelector(\'div[style*=font-weight:700]\');b.style.display=(name&&name.textContent.toLowerCase().includes(v))||!v?\'flex\':\'none\'});}).call(this)" style="width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:16px;outline:none;margin-bottom:12px;background:#fff"/>';
+    var searchBar='<input id="recipe-search" type="text" placeholder="\uD83D\uDD0D  Search recipes\u2026" oninput="filterRecipes(this.value)" style="width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:16px;outline:none;margin-bottom:12px;background:#fff"/>';
   var addBtn='<div style="display:flex;gap:8px;margin-bottom:14px">'+
     '<button data-a="show-add-recipe" style="flex:1;background:#6B7C6B;color:#fff;border:none;border-radius:12px;padding:13px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><span style="font-size:18px">+</span> Add Recipe</button>'+
     '<button data-a="manage-cats" style="background:#F3F4F6;color:#374151;border:none;border-radius:12px;padding:13px 16px;font-family:sans-serif;font-size:13px;font-weight:700;cursor:pointer">🏷️ Categories</button>'+
@@ -1311,7 +1306,7 @@ function rRecipes(){
   var filters='<div id="recipes-filters" class="sx" style="display:flex;gap:6px;margin-bottom:14px">'+opts.map(function(o){var a=(U.filter===o.id);return'<button data-a="set-filter" data-p="'+o.id+'" style="padding:6px 14px;border-radius:20px;border:none;cursor:pointer;background:'+(a?'#6B7C6B':'#F3F4F6')+';color:'+(a?'#fff':'#6B7280')+';font-family:sans-serif;font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0">'+o.label+'</button>';}).join('')+'</div>';
   var cards=list.map(function(r){
     var m=gM(r.method);var lu=getLastUsed(r.id);
-    return'<button data-a="view-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:28px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+(Object.values(S.plan).includes(r.id)?'<span style="color:#16A34A;font-family:sans-serif;font-size:11px;font-weight:700">✓ Planned</span>':'')+'</div></div></button>';
+    return'<button data-a="view-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:28px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+(Object.values(getWeekPlan(activeWeekKey())||{}).includes(r.id)?'<span style="color:#16A34A;font-family:sans-serif;font-size:11px;font-weight:700">✓ Planned</span>':'')+'</div></div></button>';
   }).join('');
   return searchBar+addBtn+filters+'<div id="recipes-cards">'+cards+'</div>';
 }
@@ -1343,7 +1338,7 @@ function rPickerModal(){
   var list=U.filter==='all'?RECIPES:U.filter==='fresh'?RECIPES.filter(function(r){var d=getLastUsed(r.id);return d===null||d>14;}):RECIPES.filter(function(r){return r.method===U.filter;});
   var filters='<div class="sx" style="display:flex;gap:6px;padding:0 18px 12px">'+opts.map(function(o){var a=(U.filter===o.id);return'<button data-a="set-filter" data-p="'+o.id+'" style="padding:6px 14px;border-radius:20px;border:none;cursor:pointer;background:'+(a?'#6B7C6B':'#F3F4F6')+';color:'+(a?'#fff':'#6B7280')+';font-family:sans-serif;font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0">'+o.label+'</button>';}).join('')+'</div>';
   var cards=list.map(function(r){
-    var m=gM(r.method);var lu=getLastUsed(r.id);var already=Object.values(S.plan).includes(r.id);
+    var m=gM(r.method);var lu=getLastUsed(r.id);var already=Object.values(getWeekPlan(activeWeekKey())||{}).includes(r.id);
     return'<button data-a="select-recipe" data-p="'+r.id+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:'+(already?'#F0FDF4':'#fff')+';border:1.5px solid '+(already?'#86EFAC':'#E5E7EB')+';border-radius:14px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="font-size:26px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap"><div style="font-family:sans-serif;font-weight:700;font-size:14px;color:#1A1A1A">'+r.name+'</div>'+lastUsedBadge(lu)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 8px;border-radius:10px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span></div></div>'+(already?'<span style="color:#16A34A;font-size:18px;flex-shrink:0">✓</span>':'')+'</button>';
   }).join('');
   return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-end"><div class="slide-up" style="background:#FFF8F8;border-radius:22px 22px 0 0;width:100%;height:88vh;display:flex;flex-direction:column;padding-bottom:var(--safe-bot)"><div id="picker-header" style="background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 0;flex-shrink:0"><div style="display:flex;justify-content:center;margin-bottom:10px"><div style="width:40px;height:4px;border-radius:2px;background:#D1D5DB"></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">Pick dinner for '+day+'</div><button data-a="close-pick" style="background:none;border:none;cursor:pointer;font-family:sans-serif;color:#6B7280;font-size:15px;font-weight:600">Cancel</button></div>'+filters+'</div><div id="picker-cards" class="sy" style="flex:1;padding:8px 16px 16px;overflow-y:auto">'+qpHtml+cards+'</div></div></div>';
