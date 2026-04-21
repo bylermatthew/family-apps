@@ -89,7 +89,9 @@ function getWeekPlan(key){return(S.weeks&&S.weeks[key])||{};}
 function setWeekPlan(key,plan){
   var w=Object.assign({},S.weeks||{});
   w[key]=plan;
-  sS({weeks:w,groceryBuilt:false});
+  S=Object.assign({},S,{weeks:w});
+  fbWrite(S);render();
+  syncGroceryList();
 }
 // Migrate old flat plan to current week if needed
 function migrateIfNeeded(){
@@ -821,10 +823,10 @@ var QUICK_PICKS=[
 ];
 function getQP(id){return QUICK_PICKS.find(function(q){return q.id===id;});}
 
-var EMPTY={weeks:{},checked:{},custom:[],autoItems:[],groceryBuilt:false,history:{},customRecipes:[],removedIds:[],customMethods:{},deletedMethods:[]};
+var EMPTY={weeks:{},checked:{},groceryItems:[],groceryAccountedSlots:[],groceryBuilt:false,history:{},customRecipes:[],removedIds:[],customMethods:{},deletedMethods:[],editingGroceryId:null};
 
 var S=Object.assign({},EMPTY);
-var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null};
+var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,editingGroceryId:null};
 
 function fbWrite(d){fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}
 function gM(t){var m=getMethods();return m[t]||m.stovetop||Object.values(m)[0];}
@@ -842,23 +844,80 @@ function lastUsedBadge(days){
   var color=days<7?'#DC2626':days<14?'#D97706':days<21?'#CA8A04':'#6B7280';
   return'<span style="background:'+bg+';color:'+color+';font-size:10px;font-family:sans-serif;font-weight:700;padding:2px 8px;border-radius:10px">'+label+'</span>';
 }
-function buildList(){
-  var plan=getWeekPlan(activeWeekKey());
-  var counts={},list=[];
-  Object.values(plan).forEach(function(id){
-    if(getQP(id))return;
-    counts[id]=(counts[id]||0)+1;
-  });
-  Object.keys(counts).forEach(function(id){
-    var r=RECIPES.find(function(x){return x.id===id;});if(!r)return;
-    var n=counts[id];
-    r.groceryItems.forEach(function(item){
-      var key=item.name.toLowerCase().replace(/[^\w]/g,'').slice(0,22);
-      var name=n>1?item.name+' <span style="background:#FEF3C7;color:#92400E;font-size:11px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:4px">×'+n+'</span>':item.name;
-      list.push(Object.assign({},item,{id:'auto-'+key+'-'+id,name:name}));
+function getFutureRecipeCounts(){
+  var today=weekKey(new Date());
+  var counts={};
+  Object.keys(S.weeks||{}).forEach(function(wk){
+    if(wk<today)return; // skip past weeks
+    var plan=S.weeks[wk]||{};
+    Object.values(plan).forEach(function(id){
+      if(!getQP(id))counts[id]=(counts[id]||0)+1;
     });
   });
-  return list;
+  return counts;
+}
+function makeItemId(recipeName,recipeId){
+  return'auto-'+recipeName.toLowerCase().replace(/[^\w]/g,'').slice(0,20)+'-'+recipeId;
+}
+function buildList(){
+  var today=weekKey(new Date());
+  var items=[],slots=[];
+  Object.keys(S.weeks||{}).filter(function(wk){return wk>=today;}).sort().forEach(function(wk){
+    var plan=S.weeks[wk]||{},wkLabel=fmtWeekLabel(wk);
+    Object.keys(plan).forEach(function(day){
+      var id=plan[day];if(!id||getQP(id))return;
+      var slot=id+':'+wk+':'+day;
+      var r=RECIPES.find(function(x){return x.id===id;});if(!r)return;
+      r.groceryItems.forEach(function(item){
+        var iid=makeItemId(item.name,id)+'-'+wk+'-'+day.slice(0,3)+'-'+Math.random().toString(36).slice(2,6);
+        items.push({id:iid,name:item.name,rawName:item.name,section:item.section,sourceRecipeId:id,sourceRecipeName:r.name,sourceWeek:wk,sourceWeekLabel:wkLabel,sourceSlot:slot,custom:false});
+      });
+      slots.push(slot);
+    });
+  });
+  return{items:items,slots:slots};
+}
+function syncGroceryList(){
+  if(!S.groceryBuilt)return;
+  var today=weekKey(new Date());
+  var items=(S.groceryItems||[]).slice();
+  var accountedSlots=(S.groceryAccountedSlots||[]).slice();
+
+  // Build current plan slots (recipeId:weekKey:day)
+  var currentSlots=[];
+  Object.keys(S.weeks||{}).filter(function(wk){return wk>=today;}).sort().forEach(function(wk){
+    var plan=S.weeks[wk]||{};
+    Object.keys(plan).forEach(function(day){
+      var id=plan[day];if(!id||getQP(id))return;
+      currentSlots.push(id+':'+wk+':'+day);
+    });
+  });
+  var currentSlotSet={};currentSlots.forEach(function(s){currentSlotSet[s]=true;});
+
+  // Remove items and untrack slots for meals removed from plan
+  var removedSet={};
+  accountedSlots.filter(function(s){return!currentSlotSet[s];}).forEach(function(s){removedSet[s]=true;});
+  if(Object.keys(removedSet).length){
+    items=items.filter(function(it){return it.custom||!it.sourceSlot||!removedSet[it.sourceSlot];});
+    accountedSlots=accountedSlots.filter(function(s){return currentSlotSet[s];});
+  }
+
+  // Add items for new slots
+  var accountedSet={};accountedSlots.forEach(function(s){accountedSet[s]=true;});
+  currentSlots.forEach(function(slot){
+    if(accountedSet[slot])return;
+    var parts=slot.split(':'),id=parts[0],wk=parts[1];
+    var r=RECIPES.find(function(x){return x.id===id;});if(!r)return;
+    var wkLabel=fmtWeekLabel(wk);
+    r.groceryItems.forEach(function(item){
+      var iid=makeItemId(item.name,id)+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
+      items.push({id:iid,name:item.name,rawName:item.name,section:item.section,sourceRecipeId:id,sourceRecipeName:r.name,sourceWeek:wk,sourceWeekLabel:wkLabel,sourceSlot:slot,custom:false});
+    });
+    accountedSlots.push(slot);
+  });
+
+  S=Object.assign({},S,{groceryItems:items,groceryAccountedSlots:accountedSlots});
+  fbWrite(S);render();
 }
 
 document.addEventListener('click',function(e){
@@ -949,18 +1008,39 @@ document.addEventListener('click',function(e){
   }
   else if(a==='view-recipe'){sU({viewRecipe:p});}
   else if(a==='close-recipe'){sU({viewRecipe:null});}
-  else if(a==='build-grocery'){sS({autoItems:buildList(),groceryBuilt:true,checked:{}});}
+  else if(a==='build-grocery'){var built=buildList();S=Object.assign({},S,{groceryItems:built.items,groceryAccountedSlots:built.slots,groceryBuilt:true,checked:{}});fbWrite(S);render();}
   else if(a==='toggle-check'){
     var nc=Object.assign({},S.checked);nc[p]=!nc[p];sS({checked:nc});
+  }
+  else if(a==='complete-trip'){
+    var remaining=(S.groceryItems||[]).filter(function(it){return!S.checked[it.id];});
+    // For any recipe that now has zero items left in list, reset its meal count
+    // so next time it's added to plan, fresh items will be generated
+    S=Object.assign({},S,{groceryItems:remaining,checked:{}});fbWrite(S);render();
+  }
+  else if(a==='edit-grocery-item'){sU({editingGroceryId:p});}
+  else if(a==='cancel-edit-grocery'){sU({editingGroceryId:null});}
+  else if(a==='save-grocery-item'){
+    var inp2=document.getElementById('gi-name-'+p);
+    var sel2=document.getElementById('gi-sect-'+p);
+    if(!inp2||!inp2.value.trim())return;
+    var updated2=(S.groceryItems||[]).map(function(it){
+      if(it.id!==p)return it;
+      return Object.assign({},it,{name:inp2.value.trim(),rawName:inp2.value.trim(),section:sel2?sel2.value:it.section});
+    });
+    S=Object.assign({},S,{groceryItems:updated2});fbWrite(S);sU({editingGroceryId:null});
+  }
+  else if(a==='remove-grocery-item'){
+    S=Object.assign({},S,{groceryItems:(S.groceryItems||[]).filter(function(it){return it.id!==p;})});fbWrite(S);render();
   }
   else if(a==='add-custom'){
     var inp=document.getElementById('ci');
     var sel=document.getElementById('cs');
     if(!inp||!inp.value.trim())return;
-    var nc2=S.custom.concat([{id:'c-'+Date.now(),name:inp.value.trim(),section:sel?sel.value:'produce',custom:true}]);
-    inp.value='';sS({custom:nc2});
+    var nc2=(S.groceryItems||[]).concat([{id:'c-'+Date.now(),name:inp.value.trim(),rawName:inp.value.trim(),section:sel?sel.value:'produce',custom:true}]);
+    inp.value='';S=Object.assign({},S,{groceryItems:nc2});fbWrite(S);render();
   }
-  else if(a==='remove-custom'){sS({custom:S.custom.filter(function(c){return c.id!==p;})});}
+  else if(a==='remove-custom'){S=Object.assign({},S,{groceryItems:(S.groceryItems||[]).filter(function(c){return c.id!==p;})});fbWrite(S);render();}
   else if(a==='show-autofill'){sU({showAutoFill:true});}
   else if(a==='close-autofill'){sU({showAutoFill:false});}
   else if(a==='run-autofill'){
@@ -1277,24 +1357,72 @@ function rPlan(){
 }
 
 function rGrocery(){
+  var allItems=S.groceryItems||[];
   if(!S.groceryBuilt){
-    var planned=Object.keys(getWeekPlan(activeWeekKey())).length;
-    return'<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:16px">🛒</div><div style="font-family:sans-serif;font-weight:700;font-size:18px;color:#1A1A1A;margin-bottom:8px">Build your grocery list</div><div style="font-family:sans-serif;font-size:14px;color:#6B7280;margin-bottom:24px;line-height:1.6">'+
-      (planned>0?'Based on your '+planned+' planned meal'+(planned>1?'s':'')+', we\'ll pull all the ingredients automatically.':'Plan your meals first, then come back to build your grocery list.')+
-    '</div>'+(planned>0?'<button data-a="build-grocery" style="background:#6B7C6B;color:#fff;border:none;border-radius:14px;padding:16px 32px;font-family:sans-serif;font-size:16px;font-weight:700;cursor:pointer">Build List →</button>':'')+'</div>';
+    var totalMeals=0;
+    Object.keys(S.weeks||{}).forEach(function(wk){if(wk>=weekKey(new Date()))totalMeals+=Object.keys(S.weeks[wk]||{}).length;});
+    return'<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:16px">🛒</div><div style="font-family:sans-serif;font-weight:700;font-size:18px;color:#1A1A1A;margin-bottom:8px">Build your grocery list</div><div style="font-family:sans-serif;font-size:14px;color:#6B7280;margin-bottom:24px;line-height:1.6">'+(totalMeals>0?'We found '+totalMeals+' meals across your current and upcoming weeks. Build your list to see all ingredients.':'Plan some meals first, then come back to build your grocery list.')+'</div>'+(totalMeals>0?'<button data-a="build-grocery" style="background:#6B7C6B;color:#fff;border:none;border-radius:14px;padding:16px 32px;font-family:sans-serif;font-size:16px;font-weight:700;cursor:pointer">Build List →</button>':'')+'</div>';
   }
 
-  var allItems=(S.autoItems||[]).concat(S.custom||[]);
   var checkedCount=Object.values(S.checked||{}).filter(Boolean).length;
+  var totalCount=allItems.length;
+
+  // Header bar
+  var header='<div style="margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#1A1A1A">'+checkedCount+' of '+totalCount+' items checked</div>'+
+    '</div>'+
+    '<button data-a="complete-trip" '+(checkedCount===0?'disabled':'')+' style="width:100%;padding:13px;background:'+(checkedCount>0?'#6B7C6B':'#E5E7EB')+';color:'+(checkedCount>0?'#fff':'#9CA3AF')+';border:none;border-radius:12px;font-family:sans-serif;font-size:15px;font-weight:700;cursor:'+(checkedCount>0?'pointer':'default')+'">🛍️ Done Shopping — Remove Checked Items</button>'+
+  '</div>';
+
   var sections=SECTS.map(function(sect){
-    var items=allItems.filter(function(it){return it.section===sect.id;});
+    var items=allItems.filter(function(it){return it.section===sect.id;}).sort(function(a,b){return(a.rawName||a.name).localeCompare(b.rawName||b.name);});
     if(!items.length)return'';
-    return'<div style="margin-bottom:20px"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;background:'+sect.bg+';padding:8px 14px;border-radius:10px;margin-bottom:8px">'+sect.label+'</div>'+items.map(function(it){var ck=!!S.checked[it.id];return'<div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid #F3F4F6"><button data-a="toggle-check" data-p="'+it.id+'" style="width:24px;height:24px;border-radius:6px;border:2px solid '+(ck?'#6B7C6B':'#D1D5DB')+';background:'+(ck?'#6B7C6B':'transparent')+';color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(ck?'✓':'')+'</button><span style="font-family:sans-serif;font-size:14px;color:'+(ck?'#9CA3AF':'#1A1A1A')+';text-decoration:'+(ck?'line-through':'none')+';flex:1">'+it.name+'</span>'+((it.custom||( it.id&&it.id.startsWith&&it.id.startsWith('c-')))?'<button data-a="remove-custom" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:0 4px">✕</button>':'')+'</div>';}).join('')+'</div>';
+    return'<div style="margin-bottom:20px">'+
+      '<div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;background:'+sect.bg+';padding:8px 14px;border-radius:10px;margin-bottom:8px">'+sect.label+'</div>'+
+      items.map(function(it){
+        var ck=!!S.checked[it.id];
+        var isEditing=(U.editingGroceryId===it.id);
+        if(isEditing){
+          var sectOpts=SECTS.map(function(s){return'<option value="'+s.id+'"'+(it.section===s.id?' selected':'')+'>'+s.label.replace(/[^\w\s&]/g,'').trim()+'</option>';}).join('');
+          return'<div style="padding:10px 4px;border-bottom:1px solid #F3F4F6">'+
+            '<div style="display:flex;gap:6px;margin-bottom:6px">'+
+              '<input id="gi-name-'+it.id+'" value="'+(it.rawName||it.name.replace(/<[^>]+>/g,'')).replace(/"/g,'&quot;')+'" style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #6B7C6B;font-family:sans-serif;font-size:14px;outline:none"/>'+
+              '<select id="gi-sect-'+it.id+'" style="padding:8px 6px;border-radius:8px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:12px;background:#fff;outline:none">'+sectOpts+'</select>'+
+            '</div>'+
+            '<div style="display:flex;gap:6px">'+
+              '<button data-a="cancel-edit-grocery" style="flex:1;padding:7px;background:#F3F4F6;border:none;border-radius:8px;font-family:sans-serif;font-size:13px;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>'+
+              '<button data-a="save-grocery-item" data-p="'+it.id+'" style="flex:2;padding:7px;background:#6B7C6B;color:#fff;border:none;border-radius:8px;font-family:sans-serif;font-size:13px;font-weight:700;cursor:pointer">Save</button>'+
+            '</div>'+
+          '</div>';
+        }
+        var mealTag=(it.sourceRecipeName&&!it.custom)?'<div style="font-family:sans-serif;font-size:11px;color:#9CA3AF;margin-top:2px">'+it.sourceRecipeName+(it.sourceWeekLabel?' · '+it.sourceWeekLabel:'')+'</div>':'';
+        return'<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid #F3F4F6">'+
+          '<button data-a="toggle-check" data-p="'+it.id+'" style="width:24px;height:24px;border-radius:6px;border:2px solid '+(ck?'#6B7C6B':'#D1D5DB')+';background:'+(ck?'#6B7C6B':'transparent')+';color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:'+(mealTag?'4px':'0')+'">'+(ck?'✓':'')+'</button>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-family:sans-serif;font-size:14px;color:'+(ck?'#9CA3AF':'#1A1A1A')+';text-decoration:'+(ck?'line-through':'none')+'">'+it.name+'</div>'+
+            mealTag+
+          '</div>'+
+          '<div style="display:flex;gap:4px;flex-shrink:0">'+
+            '<button data-a="edit-grocery-item" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:14px;padding:2px 4px">✏️</button>'+
+            '<button data-a="remove-grocery-item" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:2px 4px">✕</button>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
   }).join('');
 
-  return'<div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-family:sans-serif;font-weight:700;font-size:16px;color:#1A1A1A">'+checkedCount+' of '+allItems.length+' items got</div><button data-a="build-grocery" style="background:#FFF0F0;border:1px solid #F4A0A0;border-radius:10px;padding:7px 14px;font-family:sans-serif;font-size:12px;font-weight:700;color:#6B7C6B;cursor:pointer">Rebuild</button></div>'+sections+
-    '<div style="background:#FFF8F8;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px;margin-top:8px"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;margin-bottom:10px">Add item</div><div style="display:flex;gap:8px"><input id="ci" type="text" placeholder="Item name…" style="flex:1;padding:10px 12px;border-radius:10px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:14px;outline:none;background:#fff"/><select id="cs" style="padding:10px 8px;border-radius:10px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:13px;color:#1A1A1A;background:#fff;cursor:pointer">'+SECTS.map(function(s){return'<option value="'+s.id+'">'+s.label.replace(/[^\w\s&]/g,'').trim()+'</option>';}).join('')+'</select><button data-a="add-custom" style="background:#6B7C6B;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer">Add</button></div></div>'
-  +'</div>';
+  // Add item form
+  var addForm='<div style="background:#F9F9F9;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px;margin-top:8px">'+
+    '<div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;margin-bottom:10px">Add item</div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<input id="ci" type="text" placeholder="Item name…" style="flex:1;padding:10px 12px;border-radius:10px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:14px;outline:none;background:#fff"/>'+
+      '<select id="cs" style="padding:10px 8px;border-radius:10px;border:1.5px solid #E5E7EB;font-family:sans-serif;font-size:13px;color:#1A1A1A;background:#fff;cursor:pointer">'+SECTS.map(function(s){return'<option value="'+s.id+'">'+s.label.replace(/[^\w\s&]/g,'').trim()+'</option>';}).join('')+'</select>'+
+      '<button data-a="add-custom" style="background:#6B7C6B;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer">Add</button>'+
+    '</div>'+
+  '</div>';
+
+  return'<div>'+header+sections+addForm+'</div>';
 }
 
 function rRecipes(){
