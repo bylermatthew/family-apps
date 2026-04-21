@@ -927,7 +927,7 @@ document.addEventListener('click',function(e){
   if(a==='tab'){sU({tab:+p});}
   else if(a==='week-prev'){sU({activeWeek:shiftWeek(activeWeekKey(),-1),tab:0});}
   else if(a==='week-next'){sU({activeWeek:shiftWeek(activeWeekKey(),1),tab:0});}
-  else if(a==='pick-day-cal'){sU({pickingDay:{week:p,day:q},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
+  else if(a==='pick-day-cal'){if(Date.now()-(U._removedAt||0)<600)return;sU({pickingDay:{week:p,day:q},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
   else if(a==='pick-day'){sU({pickingDay:{week:activeWeekKey(),day:p},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
   else if(a==='close-pick'){sU({pickingDay:null});}
   else if(a==='set-filter'){
@@ -976,6 +976,7 @@ document.addEventListener('click',function(e){
     sU({viewRecipe:null});
   }
   else if(a==='remove-meal-day'){
+    U._removedAt=Date.now();
     var pl4=Object.assign({},getWeekPlan(p));
     delete pl4[q];
     setWeekPlan(p,pl4);
