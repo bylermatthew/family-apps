@@ -930,14 +930,17 @@ document.addEventListener('click',function(e){
     setWeekPlan(wk5,pl5);
   }
   else if(a==='swap-day'){
-    if(U.swapFromDay===p){sU({swapFromDay:null});}
-    else if(U.swapFromDay){
-      // Swap the two days
+    if(U.swapFromDay===p){
+      // Cancel swap
+      sU({swapFromDay:null});
+    } else if(U.swapFromDay){
       var swk=activeWeekKey();
       var spl=Object.assign({},getWeekPlan(swk));
-      var tmp=spl[U.swapFromDay];
-      if(spl[p])spl[U.swapFromDay]=spl[p];else delete spl[U.swapFromDay];
-      if(tmp)spl[p]=tmp;else delete spl[p];
+      var srcId=spl[U.swapFromDay];
+      var destId=spl[p];
+      // Move src to dest; if dest had a meal, move it back to src (swap), else just move
+      if(srcId)spl[p]=srcId;else delete spl[p];
+      if(destId)spl[U.swapFromDay]=destId;else delete spl[U.swapFromDay];
       setWeekPlan(swk,spl);
       sU({swapFromDay:null});
     } else {
@@ -1260,14 +1263,16 @@ function rPlan(){
         '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;margin-bottom:3px">'+r.name+'</div><div style="display:flex;gap:5px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 7px;border-radius:9px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+lastUsedBadge(lu)+'</div></div><button data-a="view-recipe" data-p="'+r.id+'" style="background:#F0F4F0;border:1px solid #C5D5C5;border-radius:9px;padding:6px 10px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:#6B7C6B;flex-shrink:0">View</button></div>'+
       '</div>';
     } else {
-      return'<div data-day="'+day+'" data-a="drop-zone" style="background:#fff;border:2px dashed #E5E7EB;border-radius:14px;padding:14px;margin-bottom:8px;cursor:pointer;text-align:center" data-a="pick-day-cal" data-p="'+key+'" data-q="'+day+'" >'+(isToday?'<div style="font-family:sans-serif;font-weight:800;font-size:11px;color:#6B7C6B;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">TODAY</div>':'')+
-        '<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B;margin-bottom:4px">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div>'+
-        '<button data-a="pick-day-cal" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;font-size:22px;color:#D1D5DB;display:block;margin:0 auto">+</button>'+
-        '<div style="font-family:sans-serif;font-size:11px;color:#9CA3AF">Tap to add meal</div>'+
+      return'<div data-day="'+day+'" '+(U.swapFromDay?'data-a="swap-day" data-p="'+day+'"':'data-a="pick-day-cal" data-p="'+key+'" data-q="'+day+'"')+' style="background:'+(U.swapFromDay?'#F0FDF4':'#fff')+';border:2px dashed '+(U.swapFromDay?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:18px 14px;margin-bottom:8px;cursor:pointer;text-align:center">'+(isToday?'<div style="font-family:sans-serif;font-weight:800;font-size:11px;color:#6B7C6B;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">TODAY</div>':'')+
+        '<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B;margin-bottom:6px">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div>'+
+        (U.swapFromDay?
+          '<div style="color:#6B7C6B;font-family:sans-serif;font-size:13px;font-weight:700">Move '+U.swapFromDay+' here</div>':
+          '<div style="font-size:24px;color:#D1D5DB;margin-bottom:2px">+</div><div style="font-family:sans-serif;font-size:11px;color:#9CA3AF">Tap to add meal</div>'
+        )+
       '</div>';
     }
   }).join('');
-  var swapHint=U.swapFromDay?'<div style="background:#6B7C6B;color:#fff;font-family:sans-serif;font-size:13px;font-weight:700;text-align:center;padding:10px;border-radius:12px;margin-bottom:10px">⇄ Tap \'Swap here\' on another day to swap with '+U.swapFromDay+'</div>':'';
+  var swapHint=U.swapFromDay?'<div style="background:#6B7C6B;color:#fff;font-family:sans-serif;font-size:13px;font-weight:700;text-align:center;padding:10px;border-radius:12px;margin-bottom:10px">⇄ Tap another day to move or swap '+U.swapFromDay+' — tap \'⇄ Cancel\' to cancel</div>':'';
   return'<div id="plan-days">'+swapHint+days+'</div>';
 }
 
@@ -1417,7 +1422,8 @@ function ingBuilderHtml(prefix,items){
   var sects=[
     {v:'meat',l:'🥩 Meat & Fish'},{v:'produce',l:'🥦 Produce'},
     {v:'dairy',l:'🥛 Dairy & Eggs'},{v:'pantry',l:'🥫 Pantry & Spices'},
-    {v:'bread',l:'🍞 Bread & Tortillas'},{v:'frozen',l:'❄️ Frozen'}
+    {v:'bread',l:'🍞 Bread & Tortillas'},{v:'frozen',l:'❄️ Frozen'},
+    {v:'misc',l:'🗂️ Miscellaneous'}
   ];
   var selOpts=sects.map(function(s){return'<option value="'+s.v+'">'+s.l+'</option>';}).join('');
   var rows=(items||[]).map(function(it,i){
