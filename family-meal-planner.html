@@ -842,18 +842,7 @@ function lastUsedBadge(days){
   var color=days<7?'#DC2626':days<14?'#D97706':days<21?'#CA8A04':'#6B7280';
   return'<span style="background:'+bg+';color:'+color+';font-size:10px;font-family:sans-serif;font-weight:700;padding:2px 8px;border-radius:10px">'+label+'</span>';
 }
-function getFutureRecipeCounts(){
-  var today=weekKey(new Date());
-  var counts={};
-  Object.keys(S.weeks||{}).forEach(function(wk){
-    if(wk<today)return; // skip past weeks
-    var plan=S.weeks[wk]||{};
-    Object.values(plan).forEach(function(id){
-      if(!getQP(id))counts[id]=(counts[id]||0)+1;
-    });
-  });
-  return counts;
-}
+
 function makeItemId(recipeName,recipeId){
   return'auto-'+recipeName.toLowerCase().replace(/[^\w]/g,'').slice(0,20)+'-'+recipeId;
 }
@@ -926,7 +915,7 @@ document.addEventListener('click',function(e){
   else if(a==='week-prev'){sU({activeWeek:shiftWeek(activeWeekKey(),-1),tab:0});}
   else if(a==='week-next'){sU({activeWeek:shiftWeek(activeWeekKey(),1),tab:0});}
   else if(a==='pick-day-cal'){if(Date.now()-(U._removedAt||0)<600)return;sU({pickingDay:{week:p,day:q},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
-  else if(a==='pick-day'){sU({pickingDay:{week:activeWeekKey(),day:p},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
+
   else if(a==='close-pick'){sU({pickingDay:null});}
   else if(a==='set-filter'){
     U=Object.assign({},U,{filter:p});
@@ -979,14 +968,7 @@ document.addEventListener('click',function(e){
     delete pl4[q];
     setWeekPlan(p,pl4);
   }
-  else if(a==='remove-meal'){
-    var wk5=activeWeekKey();
-    var pl5=Object.assign({},getWeekPlan(wk5));
-    var dayNames2=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    var dayName=dayNames2[+p];
-    if(dayName)delete pl5[dayName];
-    setWeekPlan(wk5,pl5);
-  }
+
   else if(a==='swap-day'){
     if(U.swapFromDay===p){
       // Cancel swap
