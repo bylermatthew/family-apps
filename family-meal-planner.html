@@ -1360,8 +1360,12 @@ function rGrocery(){
   var allItems=S.groceryItems||[];
   if(!S.groceryBuilt){
     var totalMeals=0;
-    Object.keys(S.weeks||{}).forEach(function(wk){if(wk>=weekKey(new Date()))totalMeals+=Object.keys(S.weeks[wk]||{}).length;});
-    return'<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:16px">🛒</div><div style="font-family:sans-serif;font-weight:700;font-size:18px;color:#1A1A1A;margin-bottom:8px">Build your grocery list</div><div style="font-family:sans-serif;font-size:14px;color:#6B7280;margin-bottom:24px;line-height:1.6">'+(totalMeals>0?'We found '+totalMeals+' meals across your current and upcoming weeks. Build your list to see all ingredients.':'Plan some meals first, then come back to build your grocery list.')+'</div>'+(totalMeals>0?'<button data-a="build-grocery" style="background:#6B7C6B;color:#fff;border:none;border-radius:14px;padding:16px 32px;font-family:sans-serif;font-size:16px;font-weight:700;cursor:pointer">Build List →</button>':'')+'</div>';
+    Object.keys(S.weeks||{}).forEach(function(wk){
+      if(wk<weekKey(new Date()))return;
+      var plan=S.weeks[wk]||{};
+      Object.values(plan).forEach(function(id){if(id&&!getQP(id))totalMeals++;});
+    });
+    return'<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:16px">🛒</div><div style="font-family:sans-serif;font-weight:700;font-size:18px;color:#1A1A1A;margin-bottom:8px">Build your grocery list</div><div style="font-family:sans-serif;font-size:14px;color:#6B7280;margin-bottom:24px;line-height:1.6">'+(totalMeals>0?'We found '+totalMeals+' meals across your current and upcoming weeks. Build your list to see all ingredients.':'Plan some meals first, then come back to build your grocery list.')+'</div>'+'<button data-a="build-grocery" style="background:#6B7C6B;color:#fff;border:none;border-radius:14px;padding:16px 32px;font-family:sans-serif;font-size:16px;font-weight:700;cursor:pointer">'+(totalMeals>0?'Build List →':'Start Building')+'</button></div>';
   }
 
   var checkedCount=Object.values(S.checked||{}).filter(Boolean).length;
@@ -1371,6 +1375,7 @@ function rGrocery(){
   var header='<div style="margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
       '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#1A1A1A">'+checkedCount+' of '+totalCount+' items checked</div>'+
+      '<button data-a="build-grocery" style="background:#F3F4F6;border:none;border-radius:9px;padding:6px 12px;font-family:sans-serif;font-size:12px;font-weight:700;color:#6B7C6B;cursor:pointer">↺ Rebuild</button>'+
     '</div>'+
     '<button data-a="complete-trip" '+(checkedCount===0?'disabled':'')+' style="width:100%;padding:13px;background:'+(checkedCount>0?'#6B7C6B':'#E5E7EB')+';color:'+(checkedCount>0?'#fff':'#9CA3AF')+';border:none;border-radius:12px;font-family:sans-serif;font-size:15px;font-weight:700;cursor:'+(checkedCount>0?'pointer':'default')+'">🛍️ Done Shopping — Remove Checked Items</button>'+
   '</div>';
