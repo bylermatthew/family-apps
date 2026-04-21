@@ -103,6 +103,7 @@ function migrateIfNeeded(){
     var w={};w[key]=newPlan;
     S.weeks=w;S.plan={};
     fbWrite(S);
+    try{localStorage.setItem(SK,JSON.stringify(S));}catch(e){}
     console.log('Migrated old plan to week',key);
   }
 }
@@ -745,13 +746,13 @@ function applyAiAction(action){
   if(action.action==='add_recipe'){
     var r=action.recipe;if(!r||!r.id||!r.name)return;
     var nc=(S.customRecipes||[]).filter(function(x){return x.id!==r.id;}).concat([r]);
-    sS({customRecipes:nc,groceryBuilt:false});
+    sS({customRecipes:nc});
   } else if(action.action==='update_recipe'){
     var id=action.id;if(!id)return;
     var existing=RECIPES.find(function(r){return r.id===id;});if(!existing)return;
     var updated=Object.assign({},existing,action.updates||{});
     var nc2=(S.customRecipes||[]).filter(function(x){return x.id!==id;}).concat([updated]);
-    sS({customRecipes:nc2,groceryBuilt:false});
+    sS({customRecipes:nc2});
   } else if(action.action==='set_week_plan'){
     var wkKey=action.week;var wkPlan=action.plan;
     if(!wkKey||!wkPlan)return;
@@ -763,7 +764,7 @@ function applyAiAction(action){
   } else if(action.action==='remove_recipe'){
     var rid=action.id;if(!rid)return;
     var nr=(S.removedIds||[]).filter(function(x){return x!==rid;}).concat([rid]);
-        sS({removedIds:nr,plan:np,customRecipes:nc3,groceryBuilt:false});
+        sS({removedIds:nr,customRecipes:nc3});
   }
 }
 function sendChat(msg){
@@ -1014,7 +1015,7 @@ document.addEventListener('click',function(e){
     var remaining=(S.groceryItems||[]).filter(function(it){return!S.checked[it.id];});
     // For any recipe that now has zero items left in list, reset its meal count
     // so next time it's added to plan, fresh items will be generated
-    var clearedChecked={};S=Object.assign({},S,{groceryItems:remaining,checked:clearedChecked});fbWrite(S);render();
+    S=Object.assign({},S,{groceryItems:remaining,checked:{}});fbWrite(S);render();
   }
   else if(a==='edit-grocery-item'){sU({editingGroceryId:p});}
   else if(a==='cancel-edit-grocery'){sU({editingGroceryId:null});}
@@ -1064,7 +1065,7 @@ document.addEventListener('click',function(e){
     if(!clabel||!clabel.value.trim())return;
     var cm=Object.assign({},S.customMethods||{});
     cm[cid]=Object.assign({},getMethods()[cid]||{label:clabel.value.trim(),emoji:cemoji?cemoji.value.trim():'🍽️',bg:'#F3F4F6',color:'#374151'},{label:clabel.value.trim(),emoji:cemoji?cemoji.value.trim():getMethods()[cid].emoji});
-    sS({customMethods:cm,groceryBuilt:false});sU({editCatId:null});
+    sS({customMethods:cm});sU({editCatId:null});
   }
   else if(a==='add-cat'){
     var ncLabel=document.getElementById('new-cat-label');
@@ -1129,7 +1130,7 @@ document.addEventListener('click',function(e){
       steps:stepsRaw.length?stepsRaw:existing.steps,
     });
     var nc=(S.customRecipes||[]).filter(function(x){return x.id!==eid;}).concat([updated]);
-    sS({customRecipes:nc,groceryBuilt:false});sU({editRecipeId:null,viewRecipe:eid});
+    sS({customRecipes:nc});sU({editRecipeId:null,viewRecipe:eid});
   }
   else if(a==='show-add-recipe'){sU({showAddRecipe:true,viewRecipe:null});}
   else if(a==='close-add-recipe'){sU({showAddRecipe:false});}
@@ -1141,7 +1142,7 @@ document.addEventListener('click',function(e){
     var newId=aname.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
     var newR={id:newId+'-'+Date.now(),name:aname,emoji:document.getElementById('af-emoji').value.trim()||'🍽️',method:document.getElementById('af-method').value||'stovetop',time:parseInt(document.getElementById('af-time').value)||30,cost:(document.getElementById('af-cost').value.trim()||'$10-15').replace(/-/g,'&ndash;'),cals:parseInt(document.getElementById('af-cals').value)||400,desc:document.getElementById('af-desc').value.trim()||'',kidsNote:document.getElementById('af-kids').value.trim()||'',groceryItems:aingParsed.length?aingParsed:[],steps:astepsRaw.length?astepsRaw:[]};
     var anc=(S.customRecipes||[]).concat([newR]);
-    sS({customRecipes:anc,groceryBuilt:false});sU({showAddRecipe:false,viewRecipe:newR.id});
+    sS({customRecipes:anc});sU({showAddRecipe:false,viewRecipe:newR.id});
   }
   else if(a==='delete-recipe'){sU({confirmDeleteId:p,viewRecipe:U.viewRecipe});}
   else if(a==='delete-recipe-cancel'){sU({confirmDeleteId:null});}
@@ -1219,19 +1220,19 @@ function filterPickerRecipes(val){
   var pc=document.getElementById('picker-cards');
   if(!pc)return;
   pc.querySelectorAll('button[data-a="select-recipe"]').forEach(function(b){
-    b.style.display=(!v||normalizeSearch(b.textContent).includes(v))?'flex':'none';
+    b.style.display=matchesSearch(b.textContent,val)?'flex':'none';
   });
   // Hide quick pick section when searching
   var qp=pc.querySelector('div');
-  if(qp)qp.style.display=v?'none':'';
+  if(qp)qp.style.display=val?'none':'';
 }
 function normalizeSearch(s){return(s||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();}
+function matchesSearch(text,val){if(!val)return true;var t=normalizeSearch(text);return normalizeSearch(val).split(' ').filter(Boolean).every(function(w){return t.includes(w);});}
 function filterRecipes(val){
-  var v=normalizeSearch(val);
   var rc=document.getElementById('recipes-cards');
   if(!rc)return;
   rc.querySelectorAll('button').forEach(function(b){
-    b.style.display=(!v||normalizeSearch(b.textContent).includes(v))?'flex':'none';
+    b.style.display=matchesSearch(b.textContent,val)?'flex':'none';
   });
 }
 
@@ -1277,10 +1278,11 @@ function runAutoFill(ingredients,startWeek,numWeeks,daysPerWeek){
         });
         var w=Object.assign({},S.weeks||{});
         w[action.week]=existing;
-        S=Object.assign({},S,{weeks:w,groceryBuilt:false});
+        S=Object.assign({},S,{weeks:w});
       }
     });
     fbWrite(S);render();
+    syncGroceryList();
   }).catch(function(err){
     render(); // restore plan view
     alert('Auto-fill error: '+err.message+'. Make sure your API key is set in the AI assistant.');
@@ -1744,6 +1746,7 @@ function init(){
   U.synced=true;
   render();
   if(location.protocol==='file:')return;
+  setTimeout(function(){if(!U.synced){U.synced=true;render();}},4000);
   try{
     var es=new EventSource(FB+'/mealPlan.json?accept=text/event-stream');
     es.addEventListener('put',function(e){
