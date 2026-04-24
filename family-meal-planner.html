@@ -824,7 +824,7 @@ function getQP(id){return QUICK_PICKS.find(function(q){return q.id===id;});}
 
 var _undoStack=[];
 var _MAX_UNDO=20;
-var EMPTY={weeks:{},checked:{},groceryItems:[],groceryAccountedSlots:[],groceryBuilt:false,history:{},customRecipes:[],removedIds:[],customMethods:{},deletedMethods:[],editingGroceryId:null};
+var EMPTY={weeks:{},checked:{},groceryItems:[],groceryAccountedSlots:[],groceryBuilt:false,customRecipes:[],removedIds:[],customMethods:{},deletedMethods:[],editingGroceryId:null};
 
 var S=Object.assign({},EMPTY);
 var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,saveStatus:'saved',chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,editingGroceryId:null};
