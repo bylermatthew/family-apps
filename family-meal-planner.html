@@ -842,19 +842,17 @@ function showSaveStatus(status){
   if(!el){
     el=document.createElement('div');
     el.id='save-toast';
-    el.style.cssText='position:fixed;top:calc(var(--safe-top,0px) + 8px);right:12px;z-index:9998;font-family:sans-serif;font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.12)';
+    el.style.cssText='position:fixed;top:calc(var(--safe-top,0px) + 8px);right:12px;z-index:9998;font-family:sans-serif;font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.12);transition:background 0.3s,color 0.3s';
     document.body.appendChild(el);
   }
   if(_saveTimer)clearTimeout(_saveTimer);
   if(status==='saving'){
-    el.textContent='Saving…';
+    el.textContent='Saving...';
     el.style.background='#E5E7EB';el.style.color='#6B7280';
   } else if(status==='saved'){
     el.textContent='Saved';
     el.style.background='#6B7C6B';el.style.color='#fff';
-    _saveTimer=setTimeout(function(){
-      el.style.background='#D1FAE5';el.style.color='#065F46';el.textContent='Saved';
-    },2000);
+    _saveTimer=setTimeout(function(){el.style.opacity='0.5';},3000);
   } else {
     el.textContent='Save Error';
     el.style.background='#FEE2E2';el.style.color='#DC2626';
