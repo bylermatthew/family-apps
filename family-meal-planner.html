@@ -821,14 +821,27 @@ var QUICK_PICKS=[
 ];
 function getQP(id){return QUICK_PICKS.find(function(q){return q.id===id;});}
 
+var _undoStack=[];
+var _MAX_UNDO=20;
 var EMPTY={weeks:{},checked:{},groceryItems:[],groceryAccountedSlots:[],groceryBuilt:false,history:{},customRecipes:[],removedIds:[],customMethods:{},deletedMethods:[],editingGroceryId:null};
 
 var S=Object.assign({},EMPTY);
-var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,editingGroceryId:null};
+var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,saveStatus:'saved',chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,editingGroceryId:null};
 
-function fbWrite(d){fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}
+function fbWrite(d){
+  fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})
+    .then(function(){U.saveStatus='saved';var el=document.getElementById('save-status');if(el){el.textContent='✓ Saved';el.style.opacity='1';setTimeout(function(){el.style.opacity='0';},2000);}})
+    .catch(function(){U.saveStatus='error';var el=document.getElementById('save-status');if(el){el.textContent='⚠ Error';el.style.opacity='1';}});
+}
 function gM(t){var m=getMethods();return m[t]||m.stovetop||Object.values(m)[0];}
-function sS(ns){S=Object.assign({},S,ns);fbWrite(S);render();}
+function sS(ns){
+  _undoStack.push(JSON.parse(JSON.stringify(S)));
+  if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
+  S=Object.assign({},S,ns);
+  U.saveStatus='saving';
+  fbWrite(S);
+  render();
+}
 function sU(nu){U=Object.assign({},U,nu);render();}
 
 function getLastUsed(id){
@@ -912,6 +925,11 @@ document.addEventListener('click',function(e){
   var a=el.dataset.a,p=el.dataset.p,q=el.dataset.q;
 
   if(a==='tab'){sU({tab:+p});}
+  else if(a==='undo'){
+    if(_undoStack.length===0)return;
+    S=_undoStack.pop();
+    fbWrite(S);render();
+  }
   else if(a==='week-prev'){sU({activeWeek:shiftWeek(activeWeekKey(),-1),tab:0});}
   else if(a==='week-next'){sU({activeWeek:shiftWeek(activeWeekKey(),1),tab:0});}
   else if(a==='pick-day-cal'){if(Date.now()-(U._removedAt||0)<600)return;sU({pickingDay:{week:p,day:q},filter:U.filter||'all'});setTimeout(function(){var ps=document.getElementById('picker-search');if(ps){ps.value='';filterPickerRecipes('');}},50);}
@@ -1271,6 +1289,50 @@ function runAutoFill(ingredients,startWeek,numWeeks,daysPerWeek){
   });
 }
 
+
+// ── Swipe-to-delete for grocery items ───────────────────────
+(function(){
+  var startX=0,startY=0,el=null,contentEl=null,active=false,swiped=false;
+  var THRESHOLD=70;
+  document.addEventListener('touchstart',function(e){
+    var item=e.target.closest('.swipe-item');
+    if(!item)return;
+    startX=e.touches[0].clientX;
+    startY=e.touches[0].clientY;
+    el=item;
+    contentEl=item.querySelector('.swipe-content');
+    active=true;swiped=false;
+    if(contentEl)contentEl.style.transition='none';
+  },{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(!active||!contentEl)return;
+    var dx=e.touches[0].clientX-startX;
+    var dy=e.touches[0].clientY-startY;
+    if(!swiped&&Math.abs(dy)>Math.abs(dx)){active=false;contentEl.style.transition='transform 0.15s ease';contentEl.style.transform='translateX(0)';return;}
+    if(dx>0)return;
+    swiped=true;
+    var travel=Math.max(dx,-90);
+    contentEl.style.transform='translateX('+travel+'px)';
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(!active||!contentEl){active=false;return;}
+    var dx=e.changedTouches[0].clientX-startX;
+    contentEl.style.transition='transform 0.15s ease';
+    if(dx<-THRESHOLD){
+      // Confirm delete
+      contentEl.style.transform='translateX(-100%)';
+      var id=el.dataset.id;
+      setTimeout(function(){
+        S=Object.assign({},S,{groceryItems:(S.groceryItems||[]).filter(function(it){return it.id!==id;})});
+        fbWrite(S);render();
+      },180);
+    } else {
+      contentEl.style.transform='translateX(0)';
+    }
+    active=false;el=null;contentEl=null;
+  },{passive:true});
+})();
+
 function render(){
   RECIPES=getRecipes();
   migrateIfNeeded();
@@ -1282,10 +1344,11 @@ function render(){
 
 function rApp(){
   var tabs=['🗓️ Plan','🛒 Grocery','📖 Recipes'];
-  var tabBar='<div class="sx" style="background:#fff;border-bottom:2px solid #E5E7EB;padding:0 8px;display:flex">'+tabs.map(function(t,i){var a=(U.tab===i);return'<button data-a="tab" data-p="'+i+'" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:600;white-space:nowrap;color:'+(a?'#6B7C6B':'#6B7280')+';border-bottom:'+(a?'3px solid #6B7C6B':'3px solid transparent')+'">'+t+'</button>';}).join('')+'</div>';
+  var undoBtn=_undoStack.length>0?'<button data-a="undo" style="background:rgba(107,124,107,0.12);border:none;border-radius:8px;padding:5px 10px;font-family:sans-serif;font-size:12px;font-weight:700;color:#6B7C6B;cursor:pointer;margin-left:auto;flex-shrink:0">↩ Undo</button>':'';
+  var saveBar='<div style="background:#fff;border-bottom:2px solid #E5E7EB;display:flex;align-items:center;padding:0 8px 0 0;position:relative">'+tabs.map(function(t,i){var a=(U.tab===i);return'<button data-a="tab" data-p="'+i+'" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:600;white-space:nowrap;color:'+(a?'#6B7C6B':'#6B7280')+';border-bottom:'+(a?'3px solid #6B7C6B':'3px solid transparent')+'">'+t+'</button>';}).join('')+undoBtn+'<div id="save-status" style="font-family:sans-serif;font-size:10px;color:#9CA3AF;padding:0 8px;flex-shrink:0;transition:opacity 0.5s;opacity:0;margin-left:'+(undoBtn?'4':'auto')+'px">✓ Saved</div></div>';
   var content=(U.tab===0?rPlan():'')+(U.tab===1?rGrocery():'')+(U.tab===2?rRecipes():'');
   var floatingBtn='<button data-a="open-chat" style="position:fixed;bottom:calc(var(--safe-bot) + 22px);right:18px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#6B7C6B,#4A5A4A);color:#fff;border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(120,53,15,0.45);z-index:500">🤖</button>';
-  return'<div style="background:#FFF8F8;min-height:100vh">'+rHeader()+tabBar+'<div id="main-content" style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>'+floatingBtn;
+  return'<div style="background:#FFF8F8;min-height:100vh">'+rHeader()+saveBar+'<div id="main-content" style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>'+floatingBtn;
 }
 
 function rHeader(){
@@ -1400,17 +1463,16 @@ function rGrocery(){
           '</div>';
         }
         var mealTag=(it.sourceRecipeName&&!it.custom)?'<div style="font-family:sans-serif;font-size:11px;color:#9CA3AF;margin-top:2px">'+it.sourceRecipeName+(it.sourceWeekLabel?' · '+it.sourceWeekLabel:'')+'</div>':'';
-        return'<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid #F3F4F6">'+
+        return'<div class="swipe-item" data-id="'+it.id+'" style="position:relative;overflow:hidden;border-bottom:1px solid #F3F4F6">'+
+          '<div class="swipe-delete-bg" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:#EF4444;display:flex;align-items:center;justify-content:center;color:#fff;font-family:sans-serif;font-size:13px;font-weight:700;border-radius:0 6px 6px 0">Delete</div>'+
+          '<div class="swipe-content" style="display:flex;align-items:center;gap:10px;padding:10px 4px;background:#fff;position:relative;transition:transform 0.15s ease">'+
           '<button data-a="toggle-check" data-p="'+it.id+'" style="width:24px;height:24px;border-radius:6px;border:2px solid '+(ck?'#6B7C6B':'#D1D5DB')+';background:'+(ck?'#6B7C6B':'transparent')+';color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:'+(mealTag?'4px':'0')+'">'+(ck?'✓':'')+'</button>'+
           '<div style="flex:1;min-width:0">'+
             '<div style="font-family:sans-serif;font-size:14px;color:'+(ck?'#9CA3AF':'#1A1A1A')+';text-decoration:'+(ck?'line-through':'none')+'">'+it.name+'</div>'+
             mealTag+
           '</div>'+
-          '<div style="display:flex;gap:4px;flex-shrink:0">'+
-            '<button data-a="edit-grocery-item" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:14px;padding:2px 4px">✏️</button>'+
-            '<button data-a="remove-grocery-item" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:16px;padding:2px 4px">✕</button>'+
-          '</div>'+
-        '</div>';
+          '<button data-a="edit-grocery-item" data-p="'+it.id+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:2px 6px;flex-shrink:0">✏️</button>'+
+        '</div>'+'</div>';
       }).join('')+
     '</div>';
   }).join('');
