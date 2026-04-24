@@ -113,12 +113,12 @@ function getMethods(){
 }
 
 var SECTS=[
+  {id:"misc",label:"🗂️ Miscellaneous",bg:"#F3F4F6"},
   {id:"meat",label:"🥩 Meat & Fish",bg:"#FEE2E2"},
   {id:"produce",label:"🥦 Fresh Produce",bg:"#DCFCE7"},
   {id:"dairy",label:"🥛 Dairy & Eggs",bg:"#DBEAFE"},
   {id:"pantry",label:"🥫 Pantry & Spices",bg:"#FCE4E4"},
   {id:"bread",label:"🍞 Bread & Tortillas",bg:"#EDE9FE"},
-  {id:"misc",label:"🗂️ Miscellaneous",bg:"#F3F4F6"},
   {id:"frozen",label:"❄️ Frozen",bg:"#E0F2FE"},
 ];
 
@@ -1425,7 +1425,7 @@ function rGrocery(){
     '</div>'+
   '</div>';
 
-  return'<div>'+header+sections+addForm+'</div>';
+  return'<div>'+header+addForm+sections+'</div>';
 }
 
 function rRecipes(){
