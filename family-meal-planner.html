@@ -789,6 +789,7 @@ function sendChat(msg){
   }
   currentContent.push({type:'text',text:msg||(file?'Please read this and add any recipes to my library.':'')});
   var apiMsgs=historyMsgs.concat([{role:'user',content:currentContent}]);
+  _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
@@ -1012,9 +1013,8 @@ document.addEventListener('click',function(e){
     var nc=Object.assign({},S.checked);nc[p]=!nc[p];sS({checked:nc});
   }
   else if(a==='complete-trip'){
+    _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
     var remaining=(S.groceryItems||[]).filter(function(it){return!S.checked[it.id];});
-    // For any recipe that now has zero items left in list, reset its meal count
-    // so next time it's added to plan, fresh items will be generated
     S=Object.assign({},S,{groceryItems:remaining,checked:{}});fbWrite(S);render();
   }
   else if(a==='edit-grocery-item'){sU({editingGroceryId:p});}
@@ -1027,15 +1027,18 @@ document.addEventListener('click',function(e){
       if(it.id!==p)return it;
       return Object.assign({},it,{name:inp2.value.trim(),rawName:inp2.value.trim(),section:sel2?sel2.value:it.section});
     });
+    _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
     S=Object.assign({},S,{groceryItems:updated2});fbWrite(S);sU({editingGroceryId:null});
   }
   else if(a==='remove-grocery-item'){
+    _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
     S=Object.assign({},S,{groceryItems:(S.groceryItems||[]).filter(function(it){return it.id!==p;})});fbWrite(S);render();
   }
   else if(a==='add-custom'){
     var inp=document.getElementById('ci');
     var sel=document.getElementById('cs');
     if(!inp||!inp.value.trim())return;
+    _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
     var nc2=(S.groceryItems||[]).concat([{id:'c-'+Date.now(),name:inp.value.trim(),rawName:inp.value.trim(),section:sel?sel.value:'produce',custom:true}]);
     inp.value='';S=Object.assign({},S,{groceryItems:nc2});fbWrite(S);render();
   }
@@ -1322,6 +1325,7 @@ function runAutoFill(ingredients,startWeek,numWeeks,daysPerWeek){
       // Confirm delete
       contentEl.style.transform='translateX(-100%)';
       var id=el.dataset.id;
+      _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
       setTimeout(function(){
         S=Object.assign({},S,{groceryItems:(S.groceryItems||[]).filter(function(it){return it.id!==id;})});
         fbWrite(S);render();
