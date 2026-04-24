@@ -830,9 +830,36 @@ var S=Object.assign({},EMPTY);
 var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,saveStatus:'saved',chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,editingGroceryId:null};
 
 function fbWrite(d){
+  showSaveStatus('saving');
   fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})
-    .then(function(){U.saveStatus='saved';var el=document.getElementById('save-status');if(el){el.textContent='✓ Saved';el.style.opacity='1';setTimeout(function(){el.style.opacity='0';},2000);}})
-    .catch(function(){U.saveStatus='error';var el=document.getElementById('save-status');if(el){el.textContent='⚠ Error';el.style.opacity='1';}});
+    .then(function(){showSaveStatus('saved');})
+    .catch(function(){showSaveStatus('error');});
+}
+var _saveTimer=null;
+function showSaveStatus(status){
+  U.saveStatus=status;
+  var el=document.getElementById('save-toast');
+  if(!el){
+    el=document.createElement('div');
+    el.id='save-toast';
+    el.style.cssText='position:fixed;top:calc(var(--safe-top,0px) + 6px);right:10px;z-index:9998;font-family:sans-serif;font-size:12px;font-weight:700;padding:5px 10px;border-radius:20px;pointer-events:none;transition:opacity 0.3s;opacity:0';
+    document.body.appendChild(el);
+  }
+  if(_saveTimer)clearTimeout(_saveTimer);
+  if(status==='saving'){
+    el.textContent='⏳ Saving…';
+    el.style.background='#F3F4F6';el.style.color='#6B7280';
+    el.style.opacity='1';
+  } else if(status==='saved'){
+    el.textContent='✓ Saved';
+    el.style.background='#F0FDF4';el.style.color='#16A34A';
+    el.style.opacity='1';
+    _saveTimer=setTimeout(function(){el.style.opacity='0';},2000);
+  } else {
+    el.textContent='⚠ Error';
+    el.style.background='#FEE2E2';el.style.color='#DC2626';
+    el.style.opacity='1';
+  }
 }
 function gM(t){var m=getMethods();return m[t]||m.stovetop||Object.values(m)[0];}
 function sS(ns){
@@ -1349,7 +1376,7 @@ function render(){
 function rApp(){
   var tabs=['🗓️ Plan','🛒 Grocery','📖 Recipes'];
   var undoBtn=_undoStack.length>0?'<button data-a="undo" style="background:rgba(107,124,107,0.12);border:none;border-radius:8px;padding:5px 10px;font-family:sans-serif;font-size:12px;font-weight:700;color:#6B7C6B;cursor:pointer;margin-left:auto;flex-shrink:0">↩ Undo</button>':'';
-  var saveBar='<div style="background:#fff;border-bottom:2px solid #E5E7EB;display:flex;align-items:center;padding:0 8px 0 0;position:relative">'+tabs.map(function(t,i){var a=(U.tab===i);return'<button data-a="tab" data-p="'+i+'" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:600;white-space:nowrap;color:'+(a?'#6B7C6B':'#6B7280')+';border-bottom:'+(a?'3px solid #6B7C6B':'3px solid transparent')+'">'+t+'</button>';}).join('')+undoBtn+'<div id="save-status" style="font-family:sans-serif;font-size:10px;color:#9CA3AF;padding:0 8px;flex-shrink:0;transition:opacity 0.5s;opacity:0;margin-left:'+(undoBtn?'4':'auto')+'px">✓ Saved</div></div>';
+  var saveBar='<div style="background:#fff;border-bottom:2px solid #E5E7EB;display:flex;align-items:center;padding:0 8px 0 0;position:relative">'+tabs.map(function(t,i){var a=(U.tab===i);return'<button data-a="tab" data-p="'+i+'" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:600;white-space:nowrap;color:'+(a?'#6B7C6B':'#6B7280')+';border-bottom:'+(a?'3px solid #6B7C6B':'3px solid transparent')+'">'+t+'</button>';}).join('')+undoBtn+'</div>';
   var content=(U.tab===0?rPlan():'')+(U.tab===1?rGrocery():'')+(U.tab===2?rRecipes():'');
   var floatingBtn='<button data-a="open-chat" style="position:fixed;bottom:calc(var(--safe-bot) + 22px);right:18px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#6B7C6B,#4A5A4A);color:#fff;border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(120,53,15,0.45);z-index:500">🤖</button>';
   return'<div style="background:#FFF8F8;min-height:100vh">'+rHeader()+saveBar+'<div id="main-content" style="padding:16px;max-width:600px;margin:0 auto">'+content+'</div></div>'+floatingBtn;
