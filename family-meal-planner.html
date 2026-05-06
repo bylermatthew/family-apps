@@ -1015,7 +1015,6 @@ document.addEventListener('click',function(e){
   }
 
   else if(a==='add-meal-to-grocery'){
-    // p = recipeId, q = slot (recipeId:weekKey:day)
     var slot=q;
     var parts=slot.split(':');
     var rid=parts[0],wk=parts[1];
@@ -1027,7 +1026,9 @@ document.addEventListener('click',function(e){
       var iid=makeItemId(item.name,rid)+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
       newIts.push({id:iid,name:item.name,rawName:item.name,section:item.section,sourceRecipeId:rid,sourceRecipeName:r.name,sourceWeek:wk,sourceWeekLabel:wkLabel,sourceSlot:slot,custom:false});
     });
-    var newSlots2=(S.groceryAccountedSlots||[]).concat([slot]);
+    // Keep slot in accountedSlots (or add it) — checkbox stays green
+    var existing=S.groceryAccountedSlots||[];
+    var newSlots2=existing.indexOf(slot)<0?existing.concat([slot]):existing;
     S=Object.assign({},S,{groceryItems:newIts,groceryAccountedSlots:newSlots2,groceryBuilt:true});
     fbWrite(S);render();
   }
@@ -1075,6 +1076,11 @@ document.addEventListener('click',function(e){
   else if(a==='view-recipe'){sU({viewRecipe:p});}
   else if(a==='close-recipe'){sU({viewRecipe:null});}
   else if(a==='build-grocery'){var built=buildList();S=Object.assign({},S,{groceryItems:built.items,groceryAccountedSlots:built.slots,groceryBuilt:true,checked:{}});fbWrite(S);render();}
+  else if(a==='clear-grocery'){
+    _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
+    S=Object.assign({},S,{groceryItems:(S.groceryItems||[]).filter(function(it){return it.custom;}),groceryAccountedSlots:[],checked:{},groceryBuilt:false});
+    fbWrite(S);render();
+  }
   else if(a==='toggle-check'){
     var nc=Object.assign({},S.checked);nc[p]=!nc[p];sS({checked:nc});
   }
@@ -1479,7 +1485,7 @@ function rPlan(){
     } else if(r){
       var swapBtn2='<button data-a="swap-day" data-p="'+day+'" data-q="'+key+'" style="background:'+(isSwapSrc?'#6B7C6B':'rgba(0,0,0,0.06)')+';border:none;border-radius:7px;padding:3px 8px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:'+(isSwapSrc?'#fff':'#6B7280')+'">'+(!isSwapSrc&&isSwapActive?'Move here':'⇄'+(isSwapSrc?' Cancel':''))+'</button>';
       var grocBtn=isAccounted?
-        '<div style="display:flex;align-items:center;gap:4px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:4px 10px;font-family:sans-serif;font-size:11px;font-weight:700;color:#16A34A">✓ On List</div>':
+        '<button data-a="add-meal-to-grocery" data-p="'+r.id+'" data-q="'+slot+'" style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:4px 10px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:#16A34A">✓ On List · Re-add</button>':
         '<button data-a="add-meal-to-grocery" data-p="'+r.id+'" data-q="'+slot+'" style="background:#F0F4F0;border:1px solid #C5D5C5;border-radius:8px;padding:4px 10px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:#6B7C6B">+ Grocery</button>';
       return'<div data-day="'+day+'" style="background:#fff;border:'+(isToday?'2':'1.5')+'px solid '+(isToday?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><div style="display:flex;gap:6px;align-items:center">'+swapBtn2+'<button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div></div>'+
@@ -1534,7 +1540,7 @@ function rGrocery(){
   var header='<div style="margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
       '<div style="font-family:sans-serif;font-weight:700;font-size:15px;color:#1A1A1A">'+checkedCount+' of '+totalCount+' items checked</div>'+
-      '<button data-a="build-grocery" style="background:#F3F4F6;border:none;border-radius:9px;padding:6px 12px;font-family:sans-serif;font-size:12px;font-weight:700;color:#6B7C6B;cursor:pointer">↺ Rebuild</button>'+
+      '<div style="display:flex;gap:6px"><button data-a="build-grocery" style="background:#F3F4F6;border:none;border-radius:9px;padding:6px 12px;font-family:sans-serif;font-size:12px;font-weight:700;color:#6B7C6B;cursor:pointer">↺ Rebuild</button><button data-a="clear-grocery" style="background:#FEE2E2;border:none;border-radius:9px;padding:6px 12px;font-family:sans-serif;font-size:12px;font-weight:700;color:#DC2626;cursor:pointer">✕ Clear All</button></div>'+
     '</div>'+
     '<button data-a="complete-trip" '+(checkedCount===0?'disabled':'')+' style="width:100%;padding:13px;background:'+(checkedCount>0?'#6B7C6B':'#E5E7EB')+';color:'+(checkedCount>0?'#fff':'#9CA3AF')+';border:none;border-radius:12px;font-family:sans-serif;font-size:15px;font-weight:700;cursor:'+(checkedCount>0?'pointer':'default')+'">🛍️ Done Shopping — Remove Checked Items</button>'+
   '</div>';
@@ -1622,7 +1628,7 @@ function rRecipeModal(){
     '<div style="padding:12px 18px 0;text-align:right"><button data-a="delete-recipe" data-p="'+r.id+'" style="background:none;border:none;color:#9CA3AF;font-family:sans-serif;font-size:12px;cursor:pointer;text-decoration:underline">🗑️ Remove recipe</button></div>';
   return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-end"><div class="slide-up sy" style="background:#FFF8F8;border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 20px)"><div style="background:linear-gradient(135deg,#6B7C6B,#4A5A4A);padding:20px 20px 22px;border-radius:24px 24px 0 0;position:sticky;top:0"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="font-size:42px">'+r.emoji+'</div><div style="display:flex;gap:8px">'+
 '<button data-a="edit-recipe" data-p="'+r.id+'" style="height:34px;padding:0 12px;border-radius:17px;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:sans-serif">✏️ Edit</button>'+
-'<button data-a="close-recipe" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div></div><div style="color:#fff;font-weight:700;font-size:20px;margin-top:8px;line-height:1.3">'+r.name+'</div><div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">~'+r.cals+' cal</span>'+(r.kidsNote?'<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;margin-top:8px;font-family:sans-serif;font-size:12px;color:rgba(255,255,255,0.9);width:100%">👶 '+r.kidsNote+'</div>':'')+'</div><div style="margin-top:12px"><div style="color:rgba(255,255,255,0.7);font-family:sans-serif;font-size:11px;margin-bottom:6px">Add to week:</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+days+'</div></div></div>'+deleteHtml+'<div style="padding:18px 18px 0"><p style="font-family:sans-serif;font-size:14px;color:#6B7280;line-height:1.65;margin-bottom:20px">'+r.desc+'</p><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Ingredients</div>'+(r.groceryItems||[]).map(function(it){return'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #E5E7EB"><div style="width:7px;height:7px;border-radius:50%;background:#6B7C6B;flex-shrink:0"></div><div style="font-family:sans-serif;font-size:14px;color:#1A1A1A">'+it.name+'</div></div>';}).join('')+'<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px">Instructions</div>'+r.steps.map(function(step,i){return'<div style="display:flex;gap:12px;padding:12px 0;border-bottom:'+(i<r.steps.length-1?'1px solid #E5E7EB':'none')+'"><div style="width:26px;height:26px;border-radius:50%;background:#FFF0F0;color:#6B7C6B;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:sans-serif;flex-shrink:0;margin-top:2px">'+(i+1)+'</div><div style="font-family:sans-serif;font-size:14px;color:#374151;line-height:1.6">'+step+'</div></div>';}).join('')+'</div></div></div>';
+'<button data-a="close-recipe" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div></div><div style="color:#fff;font-weight:700;font-size:20px;margin-top:8px;line-height:1.3">'+r.name+'</div><div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span><span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;font-family:sans-serif;font-size:11px">~'+r.cals+' cal</span>'+(r.kidsNote?'<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;margin-top:8px;font-family:sans-serif;font-size:12px;color:rgba(255,255,255,0.9);width:100%">👶 '+(r.kidsNote||'')+'</div>':'')+'</div><div style="margin-top:12px"><div style="color:rgba(255,255,255,0.7);font-family:sans-serif;font-size:11px;margin-bottom:6px">Add to week:</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+days+'</div></div></div>'+deleteHtml+'<div style="padding:18px 18px 0"><p style="font-family:sans-serif;font-size:14px;color:#6B7280;line-height:1.65;margin-bottom:20px">'+(r.desc||'')+'</p><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Ingredients</div>'+(r.groceryItems||[]).map(function(it){return'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #E5E7EB"><div style="width:7px;height:7px;border-radius:50%;background:#6B7C6B;flex-shrink:0"></div><div style="font-family:sans-serif;font-size:14px;color:#1A1A1A">'+it.name+'</div></div>';}).join('')+'<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#1A1A1A;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px">Instructions</div>'+(r.steps||[]).map(function(step,i){return'<div style="display:flex;gap:12px;padding:12px 0;border-bottom:'+(i<(r.steps||[]).length-1?'1px solid #E5E7EB':'none')+'"><div style="width:26px;height:26px;border-radius:50%;background:#FFF0F0;color:#6B7C6B;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:sans-serif;flex-shrink:0;margin-top:2px">'+(i+1)+'</div><div style="font-family:sans-serif;font-size:14px;color:#374151;line-height:1.6">'+step+'</div></div>';}).join('')+'</div></div></div>';
 }
 
 function rPickerModal(){
@@ -1749,7 +1755,7 @@ function rEditModal(){
   var r=RECIPES.find(function(x){return x.id===U.editRecipeId;});if(!r)return'';
   var methodOpts=Object.keys(METHODS).map(function(k){var m=METHODS[k];return'<option value="'+k+'"'+(r.method===k?' selected':'')+'>'+m.emoji+' '+m.label+'</option>';}).join('');
   var ingVal=(r.groceryItems||[]).map(function(i){return i.name+'|'+i.section;}).join('\n');
-  var stepsVal=r.steps.join('\n');
+  var stepsVal=(r.steps||[]).join('\n');
   return'<div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2500;display:flex;align-items:flex-end">'+
     '<div class="slide-up sy" style="background:#FFFBF5;border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 20px)">'+
       '<div style="background:linear-gradient(135deg,#6B7C6B,#4A5A4A);padding:18px 20px;border-radius:24px 24px 0 0;display:flex;justify-content:space-between;align-items:center">'+
