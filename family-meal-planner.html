@@ -86,12 +86,22 @@ function shiftWeek(key,n){
   return weekKey(d);
 }
 function getWeekPlan(key){return(S.weeks&&S.weeks[key])||{};}
+function moveSlot(oldSlot, newSlot){
+  // Rename a slot in accountedSlots and update sourceSlot on all items
+  if(oldSlot===newSlot)return;
+  var slots=(S.groceryAccountedSlots||[]).map(function(s){return s===oldSlot?newSlot:s;});
+  var items=(S.groceryItems||[]).map(function(it){
+    if(it.sourceSlot!==oldSlot)return it;
+    return Object.assign({},it,{sourceSlot:newSlot,sourceWeek:newSlot.split(':')[1]||it.sourceWeek});
+  });
+  S=Object.assign({},S,{groceryAccountedSlots:slots,groceryItems:items});
+}
+
 function setWeekPlan(key,plan){
   var w=Object.assign({},S.weeks||{});
   w[key]=plan;
   S=Object.assign({},S,{weeks:w});
   fbWrite(S);render();
-  syncGroceryList();
 }
 // Migrate old flat plan to current week if needed
 function migrateIfNeeded(){
@@ -827,7 +837,7 @@ var _MAX_UNDO=20;
 var EMPTY={weeks:{},checked:{},groceryItems:[],groceryAccountedSlots:[],groceryBuilt:false,customRecipes:[],removedIds:[],customMethods:{},deletedMethods:[],editingGroceryId:null};
 
 var S=Object.assign({},EMPTY);
-var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,saveStatus:'saved',chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,editingGroceryId:null};
+var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,saveStatus:'saved',chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,swapFromWeek:null,editingGroceryId:null};
 
 function fbWrite(d){
   showSaveStatus('saving');
@@ -903,46 +913,31 @@ function buildList(){
   return{items:items,slots:slots};
 }
 function syncGroceryList(){
+  // Only removes items for slots no longer in the plan — never auto-adds
   if(!S.groceryBuilt)return;
   var today=weekKey(new Date());
   var items=(S.groceryItems||[]).slice();
   var accountedSlots=(S.groceryAccountedSlots||[]).slice();
 
-  // Build current plan slots (recipeId:weekKey:day)
-  var currentSlots=[];
+  // Build current plan slots
+  var currentSlotSet={};
   Object.keys(S.weeks||{}).filter(function(wk){return wk>=today;}).sort().forEach(function(wk){
     var plan=S.weeks[wk]||{};
     Object.keys(plan).forEach(function(day){
       var id=plan[day];if(!id||getQP(id))return;
-      currentSlots.push(id+':'+wk+':'+day);
+      currentSlotSet[id+':'+wk+':'+day]=true;
     });
   });
-  var currentSlotSet={};currentSlots.forEach(function(s){currentSlotSet[s]=true;});
 
-  // Remove items and untrack slots for meals removed from plan
+  // Remove items and untrack slots for meals deleted from plan
   var removedSet={};
   accountedSlots.filter(function(s){return!currentSlotSet[s];}).forEach(function(s){removedSet[s]=true;});
   if(Object.keys(removedSet).length){
     items=items.filter(function(it){return it.custom||!it.sourceSlot||!removedSet[it.sourceSlot];});
     accountedSlots=accountedSlots.filter(function(s){return currentSlotSet[s];});
+    S=Object.assign({},S,{groceryItems:items,groceryAccountedSlots:accountedSlots});
+    fbWrite(S);render();
   }
-
-  // Add items for new slots
-  var accountedSet={};accountedSlots.forEach(function(s){accountedSet[s]=true;});
-  currentSlots.forEach(function(slot){
-    if(accountedSet[slot])return;
-    var parts=slot.split(':'),id=parts[0],wk=parts[1];
-    var r=RECIPES.find(function(x){return x.id===id;});if(!r)return;
-    var wkLabel=fmtWeekLabel(wk);
-    r.groceryItems.forEach(function(item){
-      var iid=makeItemId(item.name,id)+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
-      items.push({id:iid,name:item.name,rawName:item.name,section:item.section,sourceRecipeId:id,sourceRecipeName:r.name,sourceWeek:wk,sourceWeekLabel:wkLabel,sourceSlot:slot,custom:false});
-    });
-    accountedSlots.push(slot);
-  });
-
-  S=Object.assign({},S,{groceryItems:items,groceryAccountedSlots:accountedSlots});
-  fbWrite(S);render();
 }
 
 document.addEventListener('click',function(e){
@@ -1007,28 +1002,75 @@ document.addEventListener('click',function(e){
   }
   else if(a==='remove-meal-day'){
     U._removedAt=Date.now();
+    var rmSlot=(getWeekPlan(p)[q]||'')+':'+p+':'+q;
     var pl4=Object.assign({},getWeekPlan(p));
     delete pl4[q];
-    setWeekPlan(p,pl4);
+    // Remove grocery items for this slot
+    var newItems=(S.groceryItems||[]).filter(function(it){return it.custom||it.sourceSlot!==rmSlot;});
+    var newSlots=(S.groceryAccountedSlots||[]).filter(function(s){return s!==rmSlot;});
+    _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
+    var w2=Object.assign({},S.weeks||{});w2[p]=pl4;
+    S=Object.assign({},S,{weeks:w2,groceryItems:newItems,groceryAccountedSlots:newSlots});
+    fbWrite(S);render();
+  }
+
+  else if(a==='add-meal-to-grocery'){
+    // p = recipeId, q = slot (recipeId:weekKey:day)
+    var slot=q;
+    var parts=slot.split(':');
+    var rid=parts[0],wk=parts[1];
+    var r=RECIPES.find(function(x){return x.id===rid;});if(!r)return;
+    var wkLabel=fmtWeekLabel(wk);
+    _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
+    var newIts=(S.groceryItems||[]).slice();
+    r.groceryItems.forEach(function(item){
+      var iid=makeItemId(item.name,rid)+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
+      newIts.push({id:iid,name:item.name,rawName:item.name,section:item.section,sourceRecipeId:rid,sourceRecipeName:r.name,sourceWeek:wk,sourceWeekLabel:wkLabel,sourceSlot:slot,custom:false});
+    });
+    var newSlots2=(S.groceryAccountedSlots||[]).concat([slot]);
+    S=Object.assign({},S,{groceryItems:newIts,groceryAccountedSlots:newSlots2,groceryBuilt:true});
+    fbWrite(S);render();
   }
 
   else if(a==='swap-day'){
-    if(U.swapFromDay===p){
-      // Cancel swap
-      sU({swapFromDay:null});
+    if(U.swapFromDay===p&&(!q||U.swapFromWeek===q)){
+      sU({swapFromDay:null,swapFromWeek:null});
     } else if(U.swapFromDay){
-      var swk=activeWeekKey();
-      var spl=Object.assign({},getWeekPlan(swk));
-      var srcId=spl[U.swapFromDay];
-      var destId=spl[p];
-      // Move src to dest; if dest had a meal, move it back to src (swap), else just move
-      if(srcId)spl[p]=srcId;else delete spl[p];
-      if(destId)spl[U.swapFromDay]=destId;else delete spl[U.swapFromDay];
-      setWeekPlan(swk,spl);
-      sU({swapFromDay:null});
+      var srcWk=U.swapFromWeek||activeWeekKey();
+      var destWk=q||activeWeekKey();
+      var srcPlan=Object.assign({},getWeekPlan(srcWk));
+      var destPlan=Object.assign({},getWeekPlan(destWk));
+      var srcId2=srcPlan[U.swapFromDay];
+      var destId2=destPlan[p];
+      var oldSrcSlot=srcId2?srcId2+':'+srcWk+':'+U.swapFromDay:'';
+      var oldDestSlot=destId2?destId2+':'+destWk+':'+p:'';
+      var newSrcSlot=destId2?destId2+':'+srcWk+':'+U.swapFromDay:'';
+      var newDestSlot=srcId2?srcId2+':'+destWk+':'+p:'';
+      // Move meals
+      if(srcId2)destPlan[p]=srcId2;else delete destPlan[p];
+      if(destId2)srcPlan[U.swapFromDay]=destId2;else delete srcPlan[U.swapFromDay];
+      _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
+      // Update weeks
+      var wksCopy=Object.assign({},S.weeks||{});
+      wksCopy[srcWk]=srcPlan;
+      if(srcWk!==destWk)wksCopy[destWk]=destPlan;
+      // Move grocery slots
+      if(oldSrcSlot&&newDestSlot)moveSlot(oldSrcSlot,newDestSlot);
+      if(oldDestSlot&&newSrcSlot)moveSlot(oldDestSlot,newSrcSlot);
+      S=Object.assign({},S,{weeks:wksCopy});
+      fbWrite(S);render();
+      sU({swapFromDay:null,swapFromWeek:null});
     } else {
-      sU({swapFromDay:p});
+      sU({swapFromDay:p,swapFromWeek:q||activeWeekKey()});
     }
+  }
+
+  else if(a==='swap-week'){
+    // Shift swap source to adjacent week (‹ ›)
+    if(!U.swapFromDay)return;
+    var curSwapWk=U.swapFromWeek||activeWeekKey();
+    var newSwapWk=shiftWeek(curSwapWk,+p);
+    sU({swapFromWeek:newSwapWk});
   }
   else if(a==='view-recipe'){sU({viewRecipe:p});}
   else if(a==='close-recipe'){sU({viewRecipe:null});}
@@ -1412,6 +1454,9 @@ function rPlan(){
   var dayNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   var todayName=dayNames[(new Date().getDay()+6)%7];
   var isCurWeek=isCurrentWeek(key);
+  var accountedSet={};(S.groceryAccountedSlots||[]).forEach(function(s){accountedSet[s]=true;});
+  var swapWk=U.swapFromWeek||key;
+
   var days=dayNames.map(function(day,i){
     var id=plan[day];
     var qp=id?getQP(id):null;
@@ -1419,30 +1464,55 @@ function rPlan(){
     var m=r?gM(r.method):null;
     var lu=r?getLastUsed(r.id):null;
     var isToday=isCurWeek&&day===todayName;
-    var isDragging=(U.dragDay===day);
     var dateLabel=fmtDate(weekDates[i]);
+    var slot=id?id+':'+key+':'+day:'';
+    var isAccounted=slot&&accountedSet[slot];
+    var isSwapSrc=(U.swapFromDay===day&&(U.swapFromWeek||key)===key);
+    var isSwapActive=!!U.swapFromDay;
+
     if(qp){
-      return'<div data-day="'+day+'" style="background:'+qp.bg+';border:1.5px solid '+qp.border+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative'+(isDragging?';opacity:0.4':'')+'">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><div style="display:flex;gap:6px"><button data-a="swap-day" data-p="'+day+'" style="background:'+(U.swapFromDay===day?'#6B7C6B':'rgba(0,0,0,0.06)')+';border:none;border-radius:7px;padding:3px 8px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:'+(U.swapFromDay===day?'#fff':'#6B7280')+'">'+(U.swapFromDay&&U.swapFromDay!==day?'Swap here':'⇄'+(U.swapFromDay===day?' Cancel':''))+'</button><button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div></div>'+
+      var swapBtn='<button data-a="swap-day" data-p="'+day+'" data-q="'+key+'" style="background:'+(isSwapSrc?'#6B7C6B':'rgba(0,0,0,0.06)')+';border:none;border-radius:7px;padding:3px 8px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:'+(isSwapSrc?'#fff':'#6B7280')+'">'+(!isSwapSrc&&isSwapActive?'Move here':'⇄'+(isSwapSrc?' Cancel':''))+'</button>';
+      return'<div data-day="'+day+'" style="background:'+qp.bg+';border:1.5px solid '+qp.border+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><div style="display:flex;gap:6px">'+swapBtn+'<button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div></div>'+
         '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px">'+qp.emoji+'</div><div><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:'+qp.color+'">'+qp.name+'</div><div style="font-family:sans-serif;font-size:11px;color:'+qp.color+';opacity:0.75">'+qp.note+'</div></div></div>'+
       '</div>';
     } else if(r){
-      return'<div data-day="'+day+'" style="background:#fff;border:'+(isToday?'2px':'1.5px')+' solid '+(isToday?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative'+(isDragging?';opacity:0.4':'')+'">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><div style="display:flex;gap:6px"><button data-a="swap-day" data-p="'+day+'" style="background:'+(U.swapFromDay===day?'#6B7C6B':'rgba(0,0,0,0.06)')+';border:none;border-radius:7px;padding:3px 8px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:'+(U.swapFromDay===day?'#fff':'#6B7280')+'">'+(U.swapFromDay&&U.swapFromDay!==day?'Swap here':'⇄'+(U.swapFromDay===day?' Cancel':''))+'</button><button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div></div>'+
-        '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;margin-bottom:3px">'+r.name+'</div><div style="display:flex;gap:5px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 7px;border-radius:9px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+lastUsedBadge(lu)+'</div></div><button data-a="view-recipe" data-p="'+r.id+'" style="background:#F0F4F0;border:1px solid #C5D5C5;border-radius:9px;padding:6px 10px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:#6B7C6B;flex-shrink:0">View</button></div>'+
+      var swapBtn2='<button data-a="swap-day" data-p="'+day+'" data-q="'+key+'" style="background:'+(isSwapSrc?'#6B7C6B':'rgba(0,0,0,0.06)')+';border:none;border-radius:7px;padding:3px 8px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:'+(isSwapSrc?'#fff':'#6B7280')+'">'+(!isSwapSrc&&isSwapActive?'Move here':'⇄'+(isSwapSrc?' Cancel':''))+'</button>';
+      var grocBtn=isAccounted?
+        '<div style="display:flex;align-items:center;gap:4px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:4px 10px;font-family:sans-serif;font-size:11px;font-weight:700;color:#16A34A">✓ On List</div>':
+        '<button data-a="add-meal-to-grocery" data-p="'+r.id+'" data-q="'+slot+'" style="background:#F0F4F0;border:1px solid #C5D5C5;border-radius:8px;padding:4px 10px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:#6B7C6B">+ Grocery</button>';
+      return'<div data-day="'+day+'" style="background:#fff;border:'+(isToday?'2':'1.5')+'px solid '+(isToday?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:12px 14px;margin-bottom:8px;position:relative">'+(isToday?'<div style="position:absolute;top:-1px;left:10px;background:#6B7C6B;color:#fff;font-size:8px;font-family:sans-serif;font-weight:800;letter-spacing:1.5px;padding:2px 8px;border-radius:0 0 7px 7px;text-transform:uppercase">TODAY</div>':'')+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'+(isToday?';margin-top:8px':'')+'"><div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div><div style="display:flex;gap:6px;align-items:center">'+swapBtn2+'<button data-a="remove-meal-day" data-p="'+key+'" data-q="'+day+'" style="background:none;border:none;cursor:pointer;color:#9CA3AF;font-size:16px;padding:0">✕</button></div></div>'+
+        '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:28px;flex-shrink:0">'+r.emoji+'</div><div style="flex:1;min-width:0"><div style="font-family:sans-serif;font-weight:700;font-size:13px;color:#1A1A1A;margin-bottom:3px">'+r.name+'</div><div style="display:flex;gap:5px;flex-wrap:wrap"><span style="background:'+m.bg+';color:'+m.color+';padding:2px 7px;border-radius:9px;font-family:sans-serif;font-size:11px;font-weight:700">'+m.emoji+' '+m.label+'</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">⏱ '+r.time+' min</span><span style="color:#6B7280;font-family:sans-serif;font-size:11px">💰 '+r.cost+'</span>'+lastUsedBadge(lu)+'</div></div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">'+grocBtn+'<button data-a="view-recipe" data-p="'+r.id+'" style="background:#F0F4F0;border:1px solid #C5D5C5;border-radius:9px;padding:6px 10px;cursor:pointer;font-family:sans-serif;font-size:11px;font-weight:700;color:#6B7C6B">View</button></div></div>'+
       '</div>';
     } else {
-      return'<div data-day="'+day+'" '+(U.swapFromDay?'data-a="swap-day" data-p="'+day+'"':'data-a="pick-day-cal" data-p="'+key+'" data-q="'+day+'"')+' style="background:'+(U.swapFromDay?'#F0FDF4':'#fff')+';border:2px dashed '+(U.swapFromDay?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:18px 14px;margin-bottom:8px;cursor:pointer;text-align:center">'+(isToday?'<div style="font-family:sans-serif;font-weight:800;font-size:11px;color:#6B7C6B;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">TODAY</div>':'')+
+      return'<div data-day="'+day+'" '+(isSwapActive?'data-a="swap-day" data-p="'+day+'" data-q="'+key+'"':'data-a="pick-day-cal" data-p="'+key+'" data-q="'+day+'"')+' style="background:'+(isSwapActive?'#F0FDF4':'#fff')+';border:2px dashed '+(isSwapActive?'#6B7C6B':'#E5E7EB')+';border-radius:14px;padding:18px 14px;margin-bottom:8px;cursor:pointer;text-align:center">'+(isToday?'<div style="font-family:sans-serif;font-weight:800;font-size:11px;color:#6B7C6B;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">TODAY</div>':'')+
         '<div style="font-family:sans-serif;font-weight:700;font-size:12px;color:#6B7C6B;margin-bottom:6px">'+day+' <span style="font-weight:400;color:#9CA3AF">'+dateLabel+'</span></div>'+
-        (U.swapFromDay?
+        (isSwapActive?
           '<div style="color:#6B7C6B;font-family:sans-serif;font-size:13px;font-weight:700">Move '+U.swapFromDay+' here</div>':
           '<div style="font-size:24px;color:#D1D5DB;margin-bottom:2px">+</div><div style="font-family:sans-serif;font-size:11px;color:#9CA3AF">Tap to add meal</div>'
         )+
       '</div>';
     }
   }).join('');
-  var swapHint=U.swapFromDay?'<div style="background:#6B7C6B;color:#fff;font-family:sans-serif;font-size:13px;font-weight:700;text-align:center;padding:10px;border-radius:12px;margin-bottom:10px">⇄ Tap another day to move or swap '+U.swapFromDay+' — tap \'⇄ Cancel\' to cancel</div>':'';
-  return'<div id="plan-days">'+swapHint+days+'</div>';
+
+  // Swap mode: show week arrows + hint bar
+  var swapBar='';
+  if(U.swapFromDay){
+    var prevWkDisabled=(swapWk<=weekKey(new Date()));
+    swapBar='<div style="background:#6B7C6B;color:#fff;border-radius:12px;margin-bottom:10px;overflow:hidden">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px">'+
+        '<button data-a="swap-week" data-p="-1" style="background:rgba(255,255,255,0.15);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:'+(prevWkDisabled?'default':'pointer')+';font-size:18px;opacity:'+(prevWkDisabled?'0.3':'1')+'">‹</button>'+
+        '<div style="text-align:center;font-family:sans-serif;font-size:13px;font-weight:700">Moving <em>'+U.swapFromDay+'</em> · '+fmtWeekLabel(swapWk)+'</div>'+
+        '<button data-a="swap-week" data-p="1" style="background:rgba(255,255,255,0.15);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px">›</button>'+
+      '</div>'+
+      (swapWk!==key?'<div style="background:rgba(255,255,255,0.1);padding:8px 12px;font-family:sans-serif;font-size:12px;text-align:center">Viewing week — navigate with header arrows to see target week</div>':'')+
+      '<div style="padding:4px 12px 8px;text-align:center"><button data-a="swap-day" data-p="'+U.swapFromDay+'" data-q="'+(U.swapFromWeek||key)+'" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;padding:4px 14px;font-family:sans-serif;font-size:12px;font-weight:700;cursor:pointer">✕ Cancel</button></div>'+
+    '</div>';
+  }
+
+  return'<div id="plan-days">'+swapBar+days+'</div>';
 }
 
 function rGrocery(){
