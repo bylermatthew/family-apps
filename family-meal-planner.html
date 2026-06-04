@@ -840,7 +840,9 @@ var EMPTY={weeks:{},checked:{},groceryItems:[],groceryAccountedSlots:[],groceryB
 var S=Object.assign({},EMPTY);
 var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,saveStatus:'saved',chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,swapFromWeek:null,editingGroceryId:null};
 
+var _lastWriteTime=0;
 function fbWrite(d){
+  _lastWriteTime=Date.now();
   try{localStorage.setItem(SK,JSON.stringify(d));}catch(x){}
   showSaveStatus('saving');
   fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})
@@ -1338,6 +1340,7 @@ function runAutoFill(ingredients,startWeek,numWeeks,daysPerWeek){
   // Show a subtle loading indicator on the plan tab
   var pd=document.getElementById('plan-days');
   if(pd)pd.innerHTML='<div style="text-align:center;padding:40px 20px"><div style="font-size:36px;margin-bottom:12px">✨</div><div style="font-family:sans-serif;font-size:15px;color:#6B7C6B;font-weight:700">Auto-filling your meals…</div><div style="font-family:sans-serif;font-size:13px;color:#9CA3AF;margin-top:6px">This takes a few seconds</div></div>';
+  _undoStack.push(JSON.parse(JSON.stringify(S)));if(_undoStack.length>_MAX_UNDO)_undoStack.shift();
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
@@ -1915,27 +1918,31 @@ function init(){
   render();
   showSaveStatus('saved');
   if(location.protocol==='file:')return;
-  // Connect to Firebase — only trust first put event as authoritative source
-  var gotFirebase=false;
+  var isFirstPut=true;
   try{
     var es=new EventSource(FB+'/mealPlan.json?accept=text/event-stream');
     es.addEventListener('put',function(e){
-      if(gotFirebase)return; // ignore subsequent events (our own writes echoed back)
-      gotFirebase=true;
       var p=JSON.parse(e.data),val=p.data;
       if(val===null){
         // Firebase empty — push local state up
-        fbWrite(S);
-      } else {
-        // Firebase has data — merge with EMPTY for any missing fields
-        var remote=Object.assign({},EMPTY,val);
-        // Use whichever has more weeks planned (prefer the richer dataset)
+        if(isFirstPut){isFirstPut=false;fbWrite(S);}
+        return;
+      }
+      // Skip events that are likely echoes of our own recent write (within 4 seconds)
+      if(!isFirstPut&&Date.now()-_lastWriteTime<4000)return;
+      var remote=Object.assign({},EMPTY,val);
+      if(isFirstPut){
+        // Initial load — prefer whichever dataset is richer
         var localWeeks=Object.keys(S.weeks||{}).length;
         var remoteWeeks=Object.keys(remote.weeks||{}).length;
         S=remoteWeeks>=localWeeks?remote:S;
-        try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
-        render();
+        isFirstPut=false;
+      } else {
+        // Real-time update from another device — always apply
+        S=remote;
       }
+      try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
+      render();
     });
     es.onerror=function(){es.close();};
   }catch(x){}
