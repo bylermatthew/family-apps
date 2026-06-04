@@ -1919,36 +1919,53 @@ function init(){
   showSaveStatus('saved');
   if(location.protocol==='file:')return;
 
-  // ── Initial load from Firebase ───────────────────────────
-  fetch(FB+'/mealPlan.json')
-    .then(function(r){return r.json();})
-    .then(function(val){
-      if(!val){fbWrite(S);return;}
-      var remote=Object.assign({},EMPTY,val);
-      var localWeeks=Object.keys(S.weeks||{}).length;
-      var remoteWeeks=Object.keys(remote.weeks||{}).length;
-      S=remoteWeeks>=localWeeks?remote:S;
-      try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
-      render();
-    }).catch(function(){});
+  var gotData=false;
 
-  // ── Poll every 8 seconds for changes from other devices ──
-  setInterval(function(){
-    // Skip if we wrote recently (avoid overwriting mid-save)
-    if(Date.now()-_lastWriteTime<5000)return;
-    fetch(FB+'/mealPlan.json')
-      .then(function(r){return r.json();})
-      .then(function(val){
+  function connectFirebase(){
+    try{
+      var es=new EventSource(FB+'/mealPlan.json?accept=text/event-stream');
+      es.addEventListener('put',function(e){
+        var p=JSON.parse(e.data),val=p.data;
+        if(!gotData){
+          gotData=true;
+          if(val===null){
+            // Firebase empty — push local state up
+            fbWrite(S);return;
+          }
+          // Initial load: prefer richer dataset
+          var remote=Object.assign({},EMPTY,val);
+          var localWeeks=Object.keys(S.weeks||{}).length;
+          var remoteWeeks=Object.keys(remote.weeks||{}).length;
+          S=remoteWeeks>=localWeeks?remote:S;
+          try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
+          render();return;
+        }
+        // Subsequent events: from other devices OR our own echo
+        // Apply all — own echoes are idempotent, other-device changes propagate
         if(!val)return;
-        var remote=Object.assign({},EMPTY,val);
-        // Only update if data actually changed (compare weeks + grocery)
-        if(JSON.stringify({w:remote.weeks,g:remote.groceryItems,s:remote.groceryAccountedSlots})===
-           JSON.stringify({w:S.weeks,g:S.groceryItems,s:S.groceryAccountedSlots}))return;
-        S=remote;
+        var incoming=Object.assign({},EMPTY,val);
+        // Skip if identical to what we have (no-op)
+        if(JSON.stringify(incoming)===JSON.stringify(S))return;
+        S=incoming;
         try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
         render();
-      }).catch(function(){});
-  },8000);
+      });
+      es.onerror=function(){
+        es.close();
+        // Reconnect after 3s — handles network drops, screen lock, etc.
+        setTimeout(connectFirebase,3000);
+      };
+    }catch(x){
+      setTimeout(connectFirebase,5000);
+    }
+  }
+
+  connectFirebase();
+
+  // Fallback: if Firebase never responds, use localStorage
+  setTimeout(function(){
+    if(!gotData){showSaveStatus('saved');}
+  },5000);
 }
 init();
 }catch(e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:sans-serif"><strong>Startup error:</strong><br>'+e.message+'<br>line: '+((e.stack||'').split('\n')[1]||'')+'</div>';}
