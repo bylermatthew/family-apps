@@ -1966,6 +1966,23 @@ function init(){
   setTimeout(function(){
     if(!gotData){showSaveStatus('saved');}
   },5000);
+
+  // Reconnect when app comes back to foreground (iOS kills EventSource on background)
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible'){
+      // Re-fetch latest data immediately on resume
+      fetch(FB+'/mealPlan.json')
+        .then(function(r){return r.json();})
+        .then(function(val){
+          if(!val)return;
+          var incoming=Object.assign({},EMPTY,val);
+          if(JSON.stringify(incoming)===JSON.stringify(S))return;
+          S=incoming;
+          try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
+          render();
+        }).catch(function(){});
+    }
+  });
 }
 init();
 }catch(e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:sans-serif"><strong>Startup error:</strong><br>'+e.message+'<br>line: '+((e.stack||'').split('\n')[1]||'')+'</div>';}
