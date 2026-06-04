@@ -1923,58 +1923,54 @@ function rManageCatsModal(){
   '</div>';
 }
 
+function applyRemote(val){
+  if(!val||_pendingWrites>0)return;
+  var remote=Object.assign({},EMPTY,val);
+  // Only re-render if meaningful data changed
+  if(JSON.stringify(remote.weeks)===JSON.stringify(S.weeks)&&
+     JSON.stringify(remote.groceryItems)===JSON.stringify(S.groceryItems)&&
+     JSON.stringify(remote.groceryAccountedSlots)===JSON.stringify(S.groceryAccountedSlots)&&
+     JSON.stringify(remote.customRecipes)===JSON.stringify(S.customRecipes))return;
+  S=remote;
+  try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
+  render();
+}
+
 function init(){
-  // Load localStorage immediately so app is usable right away
+  // Show cached data immediately
   try{var l=localStorage.getItem(SK);if(l)S=Object.assign({},EMPTY,JSON.parse(l));}catch(x){}
   U.synced=true;
   render();
   showSaveStatus('saved');
   if(location.protocol==='file:')return;
 
-  var gotData=false;
+  // Initial load from Firebase
+  fetch(FB+'/mealPlan.json')
+    .then(function(r){return r.json();})
+    .then(function(v){
+      if(!v){fbWrite(S);return;}
+      applyRemote(v);
+    }).catch(function(){});
 
-  function applyRemote(val){
-    if(!val||_pendingWrites>0)return;
-    S=Object.assign({},EMPTY,val);
-    try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
-    render();
-  }
+  // Poll every 5 seconds — simple, reliable on all mobile browsers
+  setInterval(function(){
+    if(_pendingWrites>0)return;
+    // Skip if user is mid-edit (avoid clearing form inputs)
+    if(U.editRecipeId||U.showAddRecipe||U.editingGroceryId)return;
+    fetch(FB+'/mealPlan.json')
+      .then(function(r){return r.json();})
+      .then(function(v){applyRemote(v);})
+      .catch(function(){});
+  },5000);
 
-  function connectFirebase(){
-    try{
-      var es=new EventSource(FB+'/mealPlan.json?accept=text/event-stream');
-      es.addEventListener('put',function(e){
-        var p=JSON.parse(e.data),val=p.data;
-        if(!gotData){
-          gotData=true;
-          if(val===null){fbWrite(S);return;}
-          // Initial load: Firebase is authoritative source of truth
-          applyRemote(val);
-          return;
-        }
-        // Real-time update — apply if no write in flight
-        applyRemote(val);
-      });
-      es.onerror=function(){
-        es.close();
-        setTimeout(connectFirebase,3000);
-      };
-    }catch(x){setTimeout(connectFirebase,5000);}
-  }
-
-  connectFirebase();
-
-  // Re-sync when app comes back to foreground
+  // Immediate re-sync when app comes back to foreground
   document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState!=='visible')return;
+    if(document.visibilityState!=='visible'||_pendingWrites>0)return;
     fetch(FB+'/mealPlan.json')
       .then(function(r){return r.json();})
       .then(function(v){applyRemote(v);})
       .catch(function(){});
   });
-
-  // Fallback if Firebase never responds
-  setTimeout(function(){if(!gotData)showSaveStatus('saved');},5000);
 }
 init();
 }catch(e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:sans-serif"><strong>Startup error:</strong><br>'+e.message+'<br>line: '+((e.stack||'').split('\n')[1]||'')+'</div>';}
