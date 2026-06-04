@@ -840,14 +840,26 @@ var EMPTY={weeks:{},checked:{},groceryItems:[],groceryAccountedSlots:[],groceryB
 var S=Object.assign({},EMPTY);
 var U={tab:0,viewRecipe:null,pickingDay:null,filter:'all',synced:false,saveStatus:'saved',chatOpen:false,chatMsgs:[],chatLoading:false,confirmDeleteId:null,attachedFile:null,editRecipeId:null,showAddRecipe:false,showManageCats:false,editCatId:null,activeWeek:null,showAutoFill:false,swapFromDay:null,swapFromWeek:null,editingGroceryId:null};
 
-var _lastWriteTime=0;
+var _pendingWrites=0;
 function fbWrite(d){
-  _lastWriteTime=Date.now();
+  _pendingWrites++;
   try{localStorage.setItem(SK,JSON.stringify(d));}catch(x){}
   showSaveStatus('saving');
   fetch(FB+'/mealPlan.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})
-    .then(function(){showSaveStatus('saved');})
-    .catch(function(){showSaveStatus('error');});
+    .then(function(){
+      _pendingWrites=Math.max(0,_pendingWrites-1);
+      showSaveStatus('saved');
+      // After our write lands, re-fetch to pick up any concurrent changes from other devices
+      if(_pendingWrites===0){
+        setTimeout(function(){
+          fetch(FB+'/mealPlan.json')
+            .then(function(r){return r.json();})
+            .then(function(v){if(_pendingWrites===0)applyRemote(v);})
+            .catch(function(){});
+        },500);
+      }
+    })
+    .catch(function(){_pendingWrites=Math.max(0,_pendingWrites-1);showSaveStatus('error');});
 }
 var _saveTimer=null;
 function showSaveStatus(status){
@@ -1921,6 +1933,13 @@ function init(){
 
   var gotData=false;
 
+  function applyRemote(val){
+    if(!val||_pendingWrites>0)return;
+    S=Object.assign({},EMPTY,val);
+    try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
+    render();
+  }
+
   function connectFirebase(){
     try{
       var es=new EventSource(FB+'/mealPlan.json?accept=text/event-stream');
@@ -1928,61 +1947,34 @@ function init(){
         var p=JSON.parse(e.data),val=p.data;
         if(!gotData){
           gotData=true;
-          if(val===null){
-            // Firebase empty — push local state up
-            fbWrite(S);return;
-          }
-          // Initial load: prefer richer dataset
-          var remote=Object.assign({},EMPTY,val);
-          var localWeeks=Object.keys(S.weeks||{}).length;
-          var remoteWeeks=Object.keys(remote.weeks||{}).length;
-          S=remoteWeeks>=localWeeks?remote:S;
-          try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
-          render();return;
+          if(val===null){fbWrite(S);return;}
+          // Initial load: Firebase is authoritative source of truth
+          applyRemote(val);
+          return;
         }
-        // Subsequent events: from other devices OR our own echo
-        // Apply all — own echoes are idempotent, other-device changes propagate
-        if(!val)return;
-        var incoming=Object.assign({},EMPTY,val);
-        // Skip if identical to what we have (no-op)
-        if(JSON.stringify(incoming)===JSON.stringify(S))return;
-        S=incoming;
-        try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
-        render();
+        // Real-time update — apply if no write in flight
+        applyRemote(val);
       });
       es.onerror=function(){
         es.close();
-        // Reconnect after 3s — handles network drops, screen lock, etc.
         setTimeout(connectFirebase,3000);
       };
-    }catch(x){
-      setTimeout(connectFirebase,5000);
-    }
+    }catch(x){setTimeout(connectFirebase,5000);}
   }
 
   connectFirebase();
 
-  // Fallback: if Firebase never responds, use localStorage
-  setTimeout(function(){
-    if(!gotData){showSaveStatus('saved');}
-  },5000);
-
-  // Reconnect when app comes back to foreground (iOS kills EventSource on background)
+  // Re-sync when app comes back to foreground
   document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='visible'){
-      // Re-fetch latest data immediately on resume
-      fetch(FB+'/mealPlan.json')
-        .then(function(r){return r.json();})
-        .then(function(val){
-          if(!val)return;
-          var incoming=Object.assign({},EMPTY,val);
-          if(JSON.stringify(incoming)===JSON.stringify(S))return;
-          S=incoming;
-          try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
-          render();
-        }).catch(function(){});
-    }
+    if(document.visibilityState!=='visible')return;
+    fetch(FB+'/mealPlan.json')
+      .then(function(r){return r.json();})
+      .then(function(v){applyRemote(v);})
+      .catch(function(){});
   });
+
+  // Fallback if Firebase never responds
+  setTimeout(function(){if(!gotData)showSaveStatus('saved');},5000);
 }
 init();
 }catch(e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:sans-serif"><strong>Startup error:</strong><br>'+e.message+'<br>line: '+((e.stack||'').split('\n')[1]||'')+'</div>';}
