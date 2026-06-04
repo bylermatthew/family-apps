@@ -36,7 +36,7 @@ if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.navigator.standalone)
 </script>
 <script>
 var SK='fitTogether_v3';
-var FB='https://family-fit-79ca0-default-rtdb.firebaseio.com';
+var FB='https://family-fit-78619-default-rtdb.firebaseio.com';
 var ACTS=[
   {type:'run',  label:'Stroller Run',emoji:'🏃',bg:'#DCFCE7',color:'#166534',border:'#86EFAC'},
   {type:'homeA',label:'Workout A',   emoji:'💪',bg:'#FEF3C7',color:'#92400E',border:'#FCD34D'},
@@ -72,7 +72,10 @@ var WO=[
 var S={startDate:null,weeks:{}};
 var U={tab:0,viewWeek:null,picker:null,xW:null,confirmStart:false,synced:false};
 
-function fbWrite(d){fetch(FB+'/fitTogether.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}
+function fbWrite(d){
+  try{localStorage.setItem(SK,JSON.stringify(d));}catch(x){}
+  fetch(FB+'/fitTogether.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});
+}
 function newWk(){return{schedule:DS.map(function(d){return{day:d.day,type:d.type};}),done:{},habits:{}};}
 function sS(ns){S=Object.assign({},S,ns);try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}fbWrite(S);render();}
 function sU(nu){U=Object.assign({},U,nu);render();}
@@ -122,7 +125,45 @@ document.addEventListener('click',function(e){
   else if(a==='csy'){sS({startDate:null});sU({confirmStart:false,tab:0});}
 });
 
-function render(){
+function connectES(){
+  try{
+    var es=new EventSource(FB+'/fitTogether.json?accept=text/event-stream');
+    es.addEventListener('put',function(e){
+      try{
+        var p=JSON.parse(e.data),val=p.data;
+        if(val===null){
+          // Firebase empty — push local data up if we have any
+          if(S.startDate)fbWrite(S);
+        } else {
+          // Got data from Firebase — sync locally and save to localStorage
+          var inc=Object.assign({startDate:null,weeks:{}},val||{});
+          if(!inc.startDate&&S.startDate)inc.startDate=S.startDate;
+          S=inc;
+          try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
+          render();
+        }
+      }catch(x){}
+    });
+    es.onerror=function(){
+      es.close();
+      // Reconnect after 5 seconds so sync keeps working
+      setTimeout(connectES,5000);
+    };
+  }catch(x){
+    setTimeout(connectES,5000);
+  }
+}
+
+function init(){
+  // Load from localStorage immediately so app always opens
+  try{var l=localStorage.getItem(SK);if(l)S=Object.assign({},S,JSON.parse(l));}catch(x){}
+  U.synced=true;
+  render();
+  // Then sync with Firebase in background (skipped on file://)
+  if(location.protocol==='file:')return;
+  connectES();
+}
+init();
   var r=document.getElementById('root');
   try{
   if(!U.synced){r.innerHTML='<div style="min-height:100vh;background:linear-gradient(160deg,#1a4a32,#6B7C6B);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px"><div style="font-size:52px">🏃‍♂️🏃‍♀️</div><div style="color:rgba(255,255,255,0.8);font-family:sans-serif;font-size:16px">Syncing your plan…</div></div>';return;}
@@ -217,28 +258,6 @@ function rWO(){
   return'<div><div style="background:#FFF7ED;border-radius:12px;padding:12px 14px;margin-bottom:16px;font-family:sans-serif;font-size:13px;color:#92400E">⏱️ <strong>15 minutes each.</strong> Do them after the kids are in bed. Alternate A &amp; B each week.</div>'+WO.map(function(w,wi){var op=(U.xW===wi);return'<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;margin-bottom:12px;overflow:hidden"><button data-a="xw" data-p="'+wi+'" style="width:100%;padding:15px 16px;background:none;border:none;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:700;font-size:16px;color:#1A1A1A;font-family:sans-serif">Workout '+(wi===0?'A':'B')+': '+w.name+'</div><div style="color:#6B7280;font-size:12px;font-family:sans-serif;margin-top:2px">'+w.time+' · '+w.tag+'</div></div><span style="color:#6B7C6B;font-size:18px">'+(op?'▲':'▼')+'</span></button>'+(op?'<div style="border-top:1px solid #E5E7EB">'+w.moves.map(function(m,mi){return'<div style="display:flex;align-items:flex-start;padding:12px 16px;border-bottom:'+(mi<w.moves.length-1?'1px solid #E5E7EB':'none')+'"><div style="width:26px;height:26px;border-radius:50%;background:#F0FDF4;color:#6B7C6B;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:sans-serif;flex-shrink:0;margin-top:2px">'+(mi+1)+'</div><div style="margin-left:12px"><div style="font-weight:600;font-size:14px;font-family:sans-serif;color:#1A1A1A">'+m.name+'</div><div style="color:#E76F51;font-family:sans-serif;font-size:13px;font-weight:600">'+m.sets+'</div>'+(m.note?'<div style="color:#6B7280;font-family:sans-serif;font-size:12px;font-style:italic;margin-top:2px">'+m.note+'</div>':'')+'</div></div>';}).join('')+'</div>':'')+'</div>';}).join('')+'</div>';
 }
 
-function init(){
-  // Load from localStorage immediately so app always opens
-  try{var l=localStorage.getItem(SK);if(l)S=Object.assign({},S,JSON.parse(l));}catch(x){}
-  U.synced=true;
-  render();
-  // Then sync with Firebase in background (skipped on file://)
-  if(location.protocol==='file:')return;
-  try{
-    var es=new EventSource(FB+'/fitTogether.json?accept=text/event-stream');
-    es.addEventListener('put',function(e){
-      var p=JSON.parse(e.data),val=p.data;
-      if(val===null){if(S.startDate)fbWrite(S);}
-      else{
-      var inc=Object.assign({startDate:null,weeks:{}},val||{});
-      if(!inc.startDate&&S.startDate)inc.startDate=S.startDate;
-      S=inc;render();
-    }
-    });
-    es.onerror=function(){es.close();};
-  }catch(x){}
-}
-init();
-</script>
+function render(){
 </body>
 </html>
