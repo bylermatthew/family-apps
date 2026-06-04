@@ -1918,34 +1918,37 @@ function init(){
   render();
   showSaveStatus('saved');
   if(location.protocol==='file:')return;
-  var isFirstPut=true;
-  try{
-    var es=new EventSource(FB+'/mealPlan.json?accept=text/event-stream');
-    es.addEventListener('put',function(e){
-      var p=JSON.parse(e.data),val=p.data;
-      if(val===null){
-        // Firebase empty — push local state up
-        if(isFirstPut){isFirstPut=false;fbWrite(S);}
-        return;
-      }
-      // Skip events that are likely echoes of our own recent write (within 4 seconds)
-      if(!isFirstPut&&Date.now()-_lastWriteTime<4000)return;
+
+  // ── Initial load from Firebase ───────────────────────────
+  fetch(FB+'/mealPlan.json')
+    .then(function(r){return r.json();})
+    .then(function(val){
+      if(!val){fbWrite(S);return;}
       var remote=Object.assign({},EMPTY,val);
-      if(isFirstPut){
-        // Initial load — prefer whichever dataset is richer
-        var localWeeks=Object.keys(S.weeks||{}).length;
-        var remoteWeeks=Object.keys(remote.weeks||{}).length;
-        S=remoteWeeks>=localWeeks?remote:S;
-        isFirstPut=false;
-      } else {
-        // Real-time update from another device — always apply
-        S=remote;
-      }
+      var localWeeks=Object.keys(S.weeks||{}).length;
+      var remoteWeeks=Object.keys(remote.weeks||{}).length;
+      S=remoteWeeks>=localWeeks?remote:S;
       try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
       render();
-    });
-    es.onerror=function(){es.close();};
-  }catch(x){}
+    }).catch(function(){});
+
+  // ── Poll every 8 seconds for changes from other devices ──
+  setInterval(function(){
+    // Skip if we wrote recently (avoid overwriting mid-save)
+    if(Date.now()-_lastWriteTime<5000)return;
+    fetch(FB+'/mealPlan.json')
+      .then(function(r){return r.json();})
+      .then(function(val){
+        if(!val)return;
+        var remote=Object.assign({},EMPTY,val);
+        // Only update if data actually changed (compare weeks + grocery)
+        if(JSON.stringify({w:remote.weeks,g:remote.groceryItems,s:remote.groceryAccountedSlots})===
+           JSON.stringify({w:S.weeks,g:S.groceryItems,s:S.groceryAccountedSlots}))return;
+        S=remote;
+        try{localStorage.setItem(SK,JSON.stringify(S));}catch(x){}
+        render();
+      }).catch(function(){});
+  },8000);
 }
 init();
 }catch(e){document.getElementById('root').innerHTML='<div style="padding:20px;font-family:sans-serif"><strong>Startup error:</strong><br>'+e.message+'<br>line: '+((e.stack||'').split('\n')[1]||'')+'</div>';}
